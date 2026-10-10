@@ -1,0 +1,48 @@
+import { StockMovement } from '../types';
+
+export const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
+  {
+    id: 'mov-1',
+    productId: 'prod-30y-charizard',
+    productName: 'Charizard Especial 30th Anniversary Gold Foil',
+    type: 'ENTRADA',
+    quantity: 2,
+    reason: 'Importação inicial de lote comemorativo',
+    date: '2026-02-01T12:00:00Z',
+    previousStock: 0,
+    newStock: 2,
+  },
+  {
+    id: 'mov-2',
+    productId: 'prod-30y-etb',
+    productName: 'Elite Trainer Box Comemorativa 30 Anos — Selada',
+    type: 'ENTRADA',
+    quantity: 8,
+    reason: 'Recebimento de distribuidora oficial',
+    date: '2026-02-02T14:00:00Z',
+    previousStock: 0,
+    newStock: 8,
+  },
+  {
+    id: 'mov-3',
+    productId: 'prod-30y-etb',
+    productName: 'Elite Trainer Box Comemorativa 30 Anos — Selada',
+    type: 'SAIDA',
+    quantity: 3,
+    reason: 'Venda direta via WhatsApp',
+    date: '2026-02-04T16:30:00Z',
+    previousStock: 8,
+    newStock: 5,
+  },
+  {
+    id: 'mov-4',
+    productId: 'prod-30y-pikachu-promo',
+    productName: 'Pikachu VMAX Black & Gold Promo',
+    type: 'SAIDA',
+    quantity: 2,
+    reason: 'Venda direta e envio para colecionador',
+    date: '2026-02-05T18:10:00Z',
+    previousStock: 2,
+    newStock: 0,
+  },
+];
