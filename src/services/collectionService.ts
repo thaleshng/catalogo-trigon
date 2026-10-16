@@ -10,6 +10,7 @@ function mapCollection(row: any): Collection {
     description: row.description || '',
     coverImage: row.cover_image || '',
     isActive: row.is_active,
+    sortOrder: Number(row.sort_order) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -23,6 +24,7 @@ export const collectionService = {
     let query = supabase
       .from('collections')
       .select('*')
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (onlyActive) {
@@ -78,9 +80,23 @@ export const collectionService = {
    * Cria uma nova coleção no Supabase
    */
   async createCollection(
-    data: Omit<Collection, 'id' | 'slug' | 'createdAt' | 'updatedAt'> & { slug?: string }
+    data: Omit<Collection, 'id' | 'slug' | 'sortOrder' | 'createdAt' | 'updatedAt'> & {
+      slug?: string;
+    }
   ): Promise<Collection> {
     const finalSlug = data.slug?.trim() || slugify(data.name);
+
+    const { data: lastCollection, error: orderError } = await supabase
+      .from('collections')
+      .select('sort_order')
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (orderError) {
+      console.error('Erro ao obter a ordem das coleções:', orderError);
+      throw new Error(orderError.message);
+    }
 
     const { data: created, error } = await supabase
       .from('collections')
@@ -90,6 +106,7 @@ export const collectionService = {
         description: data.description || '',
         cover_image: data.coverImage || '',
         is_active: data.isActive ?? true,
+        sort_order: (lastCollection?.sort_order ?? -1) + 1,
       })
       .select()
       .single();
@@ -118,6 +135,7 @@ export const collectionService = {
     if (data.description !== undefined) payload.description = data.description;
     if (data.coverImage !== undefined) payload.cover_image = data.coverImage;
     if (data.isActive !== undefined) payload.is_active = data.isActive;
+    if (data.sortOrder !== undefined) payload.sort_order = data.sortOrder;
 
     const { data: updated, error } = await supabase
       .from('collections')
@@ -132,6 +150,17 @@ export const collectionService = {
     }
 
     return mapCollection(updated);
+  },
+
+  async reorderCollections(collectionIds: string[]): Promise<void> {
+    const { error } = await supabase.rpc('reorder_collections', {
+      collection_ids: collectionIds,
+    });
+
+    if (error) {
+      console.error('Erro ao salvar a ordem das coleções:', error);
+      throw new Error(error.message);
+    }
   },
 
   /**

@@ -456,7 +456,7 @@ export const AdminCustomersPage: React.FC = () => {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ex: Carlos Santos"
+                  placeholder="Clóvis da Silva"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-trigon-950 border border-trigon-750 text-white text-sm focus:outline-none focus:border-crimson-500"
                   required
                 />

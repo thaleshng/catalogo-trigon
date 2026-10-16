@@ -5,6 +5,7 @@ export interface Collection {
   description: string;
   coverImage: string;
   isActive: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }

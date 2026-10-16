@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Collection } from '../../types';
 import { collectionService } from '../../services/collectionService';
 import { useToast } from '../../components/common/Toast';
@@ -16,6 +16,7 @@ import {
   EyeOff,
   ExternalLink,
   Search,
+  GripVertical,
 } from 'lucide-react';
 
 export const AdminCollectionsPage: React.FC = () => {
@@ -23,6 +24,10 @@ export const AdminCollectionsPage: React.FC = () => {
   const [productCounts, setProductCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null);
+  const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const originalOrderRef = useRef<Collection[] | null>(null);
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -168,6 +173,56 @@ export const AdminCollectionsPage: React.FC = () => {
     c.name.toLowerCase().includes(search.toLowerCase().trim())
   );
 
+  const handleCollectionDragEnter = (targetId: string) => {
+    if (!draggedCollectionId || draggedCollectionId === targetId || search.trim() || isSavingOrder) {
+      return;
+    }
+
+    setDragOverCollectionId(targetId);
+    setCollections((currentCollections) => {
+      const sourceIndex = currentCollections.findIndex(
+        (collection) => collection.id === draggedCollectionId
+      );
+      const targetIndex = currentCollections.findIndex(
+        (collection) => collection.id === targetId
+      );
+      if (sourceIndex < 0 || targetIndex < 0) return currentCollections;
+
+      const reordered = [...currentCollections];
+      const [movedCollection] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, movedCollection);
+      return reordered;
+    });
+  };
+
+  const handleCollectionDrop = async () => {
+    if (!draggedCollectionId || search.trim() || isSavingOrder) return;
+
+    const reordered = collections;
+    const originalOrder = originalOrderRef.current;
+    if (!originalOrder || reordered.every((collection, index) => collection.id === originalOrder[index]?.id)) {
+      setDraggedCollectionId(null);
+      setDragOverCollectionId(null);
+      return;
+    }
+
+    setIsSavingOrder(true);
+
+    try {
+      await collectionService.reorderCollections(reordered.map((collection) => collection.id));
+      success('Ordem das coleções salva com sucesso!');
+    } catch (err) {
+      console.error('Erro ao salvar a ordem das coleções:', err);
+      setCollections(originalOrder);
+      error('Não foi possível salvar a ordem das coleções.');
+    } finally {
+      setIsSavingOrder(false);
+      setDraggedCollectionId(null);
+      setDragOverCollectionId(null);
+      originalOrderRef.current = null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header and Add Button */}
@@ -206,6 +261,13 @@ export const AdminCollectionsPage: React.FC = () => {
           Total: <strong className="text-white">{filteredCollections.length}</strong>
         </span>
       </div>
+      <p className="text-xs text-trigon-400 -mt-3">
+        {search.trim()
+          ? 'Limpe a busca para reorganizar as coleções.'
+          : isSavingOrder
+            ? 'Salvando nova ordem...'
+            : 'Segure e arraste uma coleção: a lista se reorganiza na hora e salva ao soltar.'}
+      </p>
 
       {/* Collections List / Grid */}
       {loading ? (
@@ -229,7 +291,25 @@ export const AdminCollectionsPage: React.FC = () => {
             return (
               <div
                 key={col.id}
-                className="rounded-2xl bg-trigon-900 border border-trigon-800 overflow-hidden flex flex-col justify-between shadow-lg hover:border-trigon-700 transition-colors"
+                data-collection-card
+                onDragEnter={() => handleCollectionDragEnter(col.id)}
+                onDragOver={(event) => {
+                  if (!search.trim() && !isSavingOrder) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  void handleCollectionDrop();
+                }}
+                className={`rounded-2xl bg-trigon-900 border border-trigon-800 overflow-hidden flex flex-col justify-between shadow-lg transition-all duration-200 ${
+                  draggedCollectionId === col.id
+                    ? 'scale-[0.98] opacity-40'
+                    : dragOverCollectionId === col.id
+                      ? 'scale-[1.02] border-crimson-500 ring-2 ring-crimson-500/50 shadow-glow-crimson'
+                      : 'hover:border-trigon-700'
+                }`}
               >
                 <div>
                   {/* Image banner */}
@@ -263,6 +343,36 @@ export const AdminCollectionsPage: React.FC = () => {
                         {count} produtos
                       </span>
                     </div>
+
+                    <button
+                      type="button"
+                      draggable={!search.trim() && !isSavingOrder}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', col.id);
+                        const card = event.currentTarget.closest<HTMLElement>('[data-collection-card]');
+                        if (card) {
+                          event.dataTransfer.setDragImage(
+                            card,
+                            card.clientWidth / 2,
+                            Math.min(60, card.clientHeight / 2)
+                          );
+                        }
+                        originalOrderRef.current = [...collections];
+                        setDraggedCollectionId(col.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedCollectionId(null);
+                        setDragOverCollectionId(null);
+                      }}
+                      disabled={Boolean(search.trim()) || isSavingOrder}
+                      aria-label={`Arrastar ${col.name} para mudar a ordem`}
+                      title="Segure e arraste para mudar a ordem"
+                      className="absolute bottom-3 right-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-trigon-950/90 border border-trigon-600 text-white text-xs font-semibold shadow-lg backdrop-blur-md hover:border-crimson-400 hover:bg-crimson-950/90 cursor-grab active:cursor-grabbing disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <GripVertical className="w-4 h-4 text-crimson-400" />
+                      <span>Segure e arraste</span>
+                    </button>
                   </div>
 
                   {/* Body */}
