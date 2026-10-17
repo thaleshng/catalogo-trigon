@@ -21,7 +21,11 @@ import {
   Loader2,
   Copy,
   Check,
+  Gift,
+  Compass,
 } from 'lucide-react';
+import { CustomerGiftsModal } from '../../components/admin/CustomerGiftsModal';
+import { CustomerQuestModal } from '../../components/admin/CustomerQuestModal';
 
 export const AdminCustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -33,6 +37,14 @@ export const AdminCustomersPage: React.FC = () => {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [loadingCep, setLoadingCep] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Customer Gifts Modal State
+  const [giftsCustomer, setGiftsCustomer] = useState<Customer | null>(null);
+  const [isGiftsModalOpen, setIsGiftsModalOpen] = useState(false);
+
+  // Customer Quest Modal State
+  const [questCustomer, setQuestCustomer] = useState<Customer | null>(null);
+  const [isQuestModalOpen, setIsQuestModalOpen] = useState(false);
 
   const emptyForm = {
     name: '',
@@ -97,6 +109,16 @@ export const AdminCustomersPage: React.FC = () => {
       referencePoint: customer.referencePoint || '',
     });
     setIsFormOpen(true);
+  };
+
+  const handleOpenGifts = (customer: Customer) => {
+    setGiftsCustomer(customer);
+    setIsGiftsModalOpen(true);
+  };
+
+  const handleOpenQuest = (customer: Customer) => {
+    setQuestCustomer(customer);
+    setIsQuestModalOpen(true);
   };
 
   const handleCepChange = async (val: string) => {
@@ -409,6 +431,24 @@ export const AdminCustomersPage: React.FC = () => {
                             )}
                           </button>
                         )}
+                        {/* Gerenciamento de Brindes do Cliente */}
+                        <button
+                          onClick={() => handleOpenGifts(cust)}
+                          className="p-1.5 rounded-lg border border-purple-800/50 text-purple-400 hover:text-purple-300 hover:bg-purple-950/40 transition-colors"
+                          title="Gerenciar Brindes do Cliente"
+                        >
+                          <Gift className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Programa de Fidelidade Quest TRIGON */}
+                        <button
+                          onClick={() => handleOpenQuest(cust)}
+                          className="p-1.5 rounded-lg border border-amber-800/50 text-amber-400 hover:text-amber-300 hover:bg-amber-950/40 transition-colors"
+                          title="Programa de Fidelidade Quest TRIGON"
+                        >
+                          <Compass className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           onClick={() => handleOpenEdit(cust)}
                           className="p-1.5 rounded-lg border border-trigon-750 text-trigon-300 hover:text-white hover:bg-trigon-800 transition-colors"
@@ -687,6 +727,26 @@ export const AdminCustomersPage: React.FC = () => {
         message={`Deseja realmente remover o cliente "${deleteTarget?.name}"? Esta ação não afetará o histórico de vendas já concluídas.`}
         confirmText="Sim, excluir"
         variant="danger"
+      />
+
+      {/* Modal de Brindes do Cliente */}
+      <CustomerGiftsModal
+        isOpen={isGiftsModalOpen}
+        onClose={() => {
+          setIsGiftsModalOpen(false);
+          setGiftsCustomer(null);
+        }}
+        customer={giftsCustomer}
+      />
+
+      {/* Modal de Quest TRIGON do Cliente */}
+      <CustomerQuestModal
+        isOpen={isQuestModalOpen}
+        onClose={() => {
+          setIsQuestModalOpen(false);
+          setQuestCustomer(null);
+        }}
+        customer={questCustomer}
       />
     </div>
   );

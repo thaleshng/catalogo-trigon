@@ -10,9 +10,24 @@ export interface Collection {
   updatedAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  coverImage: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProductOrganizationType = 'collection' | 'category';
+
 export interface Product {
   id: string;
-  collectionId: string;
+  collectionId?: string | null;
+  categoryId?: string | null;
   name: string;
   slug: string;
   description: string;
@@ -89,3 +104,129 @@ export interface DashboardStats {
   totalSalesCount: number;
   totalRevenue: number;
 }
+
+export type GiftStatus = 'reservado' | 'enviado';
+
+export interface Gift {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  isAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerGift {
+  id: string;
+  customerId: string;
+  giftId: string;
+  status: GiftStatus;
+  giftedAt?: string | null;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Relacionamentos carregados em joins para exibição
+  gift?: Gift;
+  customer?: Customer;
+}
+
+// ==============================================================================
+// SISTEMA DE FIDELIDADE QUEST TRIGON
+// ==============================================================================
+
+export type QuestModality = 'jornada' | 'livre';
+export type CustomerQuestStatus = 'em_andamento' | 'concluida' | 'cancelada';
+export type QuestStepStatus = 'conquistada' | 'reservada' | 'enviada' | 'cancelada';
+
+export interface QuestModel {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  piecesCount: number;
+  level: number; // 1 a 5
+  minValue: number;
+  assemblyInstructions: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Indicadores de participação agregados
+  activeParticipantsCount?: number;
+  completedParticipantsCount?: number;
+}
+
+export interface CustomerQuestProgress {
+  customerId: string;
+  currentLevel: number; // 1 a 5
+  totalQuestsCompleted: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuestClosure {
+  id: string;
+  customerId: string;
+  totalValue: number;
+  closureDate: string;
+  saleReference?: string;
+  notes?: string;
+  isUsed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerQuest {
+  id: string;
+  customerId: string;
+  modelId: string;
+  modality: QuestModality;
+  status: CustomerQuestStatus;
+  startedLevel: number;
+  startedAt: string;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Relacionamentos
+  model?: QuestModel;
+  customer?: Customer;
+  steps?: QuestStep[];
+  // Contadores calculados
+  sentPiecesCount?: number;
+  conqueredPiecesCount?: number;
+  reservedPiecesCount?: number;
+}
+
+export interface QuestStep {
+  id: string;
+  customerQuestId: string;
+  stepNumber: number;
+  pieceName: string;
+  normalizedPieceName: string;
+  status: QuestStepStatus;
+  closureId?: string | null;
+  notes?: string;
+  earnedAt: string;
+  reservedAt?: string | null;
+  sentAt?: string | null;
+  isException: boolean;
+  exceptionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  closure?: QuestClosure;
+}
+
+export interface QuestAuditLog {
+  id: string;
+  customerQuestId?: string;
+  stepId?: string;
+  action: string;
+  reason: string;
+  actor?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+

@@ -5,7 +5,7 @@ export const storageUploadService = {
    * Faz upload de arquivo diretamente para o Supabase Storage (bucket trigon-catalog-images)
    * e retorna a URL pública permanente na CDN.
    */
-  async uploadImage(file: File, folder: 'products' | 'collections' = 'products'): Promise<string> {
+  async uploadImage(file: File, folder: 'products' | 'collections' | 'categories' | 'gifts' | 'quests' = 'products'): Promise<string> {
     const fileExt = file.name.split('.').pop()?.toLowerCase() || 'webp';
     const cleanFileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 

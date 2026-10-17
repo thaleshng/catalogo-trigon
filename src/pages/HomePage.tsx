@@ -1,7 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Collection } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Collection, Category } from '../types';
 import { collectionService } from '../services/collectionService';
+import { categoryService } from '../services/categoryService';
 import { CollectionCard } from '../components/catalog/CollectionCard';
+import { CategoryCard } from '../components/catalog/CategoryCard';
+import { ShowcaseSlider } from '../components/catalog/ShowcaseSlider';
 import { SITE_CONFIG } from '../config/site';
 import {
   Shield,
@@ -9,29 +12,32 @@ import {
   Truck,
   Users,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Flame,
 } from 'lucide-react';
 
 export const HomePage: React.FC = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [productCounts, setProductCounts] = useState<Record<string, number>>({});
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [collectionCounts, setCollectionCounts] = useState<Record<string, number>>({});
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const sliderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [cols, counts] = await Promise.all([
+        const [cols, colCounts, cats, catCounts] = await Promise.all([
           collectionService.getCollections(true), // apenas coleções ativas
           collectionService.getCollectionProductCounts(),
+          categoryService.getCategories(true), // apenas linhas ativas
+          categoryService.getCategoryProductCounts(),
         ]);
         setCollections(cols);
-        setProductCounts(counts);
+        setCollectionCounts(colCounts);
+        setCategories(cats);
+        setCategoryCounts(catCounts);
       } catch (err) {
-        console.error('Erro ao carregar coleções:', err);
+        console.error('Erro ao carregar dados da página inicial:', err);
       } finally {
         setLoading(false);
       }
@@ -42,16 +48,6 @@ export const HomePage: React.FC = () => {
 
   const scrollToCollections = () => {
     document.getElementById('colecoes-section')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleScroll = (direction: 'left' | 'right') => {
-    if (sliderRef.current) {
-      const scrollAmount = 370;
-      sliderRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
-    }
   };
 
   return (
@@ -175,70 +171,51 @@ export const HomePage: React.FC = () => {
             <p className="text-base text-trigon-300">Nenhuma coleção disponível no momento.</p>
           </div>
         ) : (
-          <div className="relative group/carousel">
-            {/* Sliding Arrows (aparecem caso haja mais itens ou ao navegar) */}
-            {collections.length > 3 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleScroll('left')}
-                  className="hidden md:flex absolute -left-4 lg:-left-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-trigon-950/90 border border-trigon-700 hover:border-crimson-500 text-white hover:text-crimson-400 shadow-2xl items-center justify-center transition-all backdrop-blur-md cursor-pointer hover:scale-110"
-                  aria-label="Coleção anterior"
-                >
-                  <ChevronLeft className="w-6 h-6" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleScroll('right')}
-                  className="hidden md:flex absolute -right-4 lg:-right-6 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-trigon-950/90 border border-trigon-700 hover:border-crimson-500 text-white hover:text-crimson-400 shadow-2xl items-center justify-center transition-all backdrop-blur-md cursor-pointer hover:scale-110"
-                  aria-label="Próxima coleção"
-                >
-                  <ChevronRight className="w-6 h-6" />
-                </button>
-              </>
+          <ShowcaseSlider
+            items={collections}
+            getKey={(col) => col.id}
+            prevAriaLabel="Coleção anterior"
+            nextAriaLabel="Próxima coleção"
+            renderItem={(col) => (
+              <CollectionCard
+                collection={col}
+                productCount={collectionCounts[col.id] || 0}
+              />
             )}
-
-            {/* Cards Carousel Track: Centralizado quando há 3 ou menos, e slideável quando exceder */}
-            <div
-              ref={sliderRef}
-              className={`flex items-stretch gap-6 sm:gap-8 overflow-x-auto scroll-smooth py-4 px-2 no-scrollbar snap-x snap-mandatory ${
-                collections.length <= 3 ? 'justify-start lg:justify-center' : 'justify-start'
-              }`}
-            >
-              {collections.map((col) => (
-                <div
-                  key={col.id}
-                  className="w-[285px] sm:w-[325px] md:w-[350px] shrink-0 snap-center flex flex-col h-full"
-                >
-                  <CollectionCard
-                    collection={col}
-                    productCount={productCounts[col.id] || 0}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Mobile / Scroll Indicator helper */}
-            {collections.length > 3 && (
-              <div className="flex md:hidden items-center justify-center gap-3 mt-4 text-xs text-trigon-400">
-                <button
-                  onClick={() => handleScroll('left')}
-                  className="p-1.5 rounded-lg bg-trigon-900 border border-trigon-800 text-trigon-300"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span>Deslize para ver mais</span>
-                <button
-                  onClick={() => handleScroll('right')}
-                  className="p-1.5 rounded-lg bg-trigon-900 border border-trigon-800 text-trigon-300"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </div>
+          />
         )}
       </section>
+
+      {/* Second Showcase: Explore o Universo TRIGON (Linhas de Produtos) */}
+      {!loading && categories.length > 0 && (
+        <section id="universo-trigon-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          {/* Centered Header */}
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-xs font-bold tracking-widest uppercase text-crimson-400">
+              Além das Cartas
+            </span>
+            <h2 className="font-cinzel text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mt-1.5 tracking-wide">
+              Explore o Universo TRIGON
+            </h2>
+            <p className="text-sm sm:text-base text-trigon-400 mt-2.5 leading-relaxed">
+              De acessórios essenciais a criações em 3D, descubra tudo que vai além das cartas.
+            </p>
+          </div>
+
+          <ShowcaseSlider
+            items={categories}
+            getKey={(cat) => cat.id}
+            prevAriaLabel="Linha anterior"
+            nextAriaLabel="Próxima linha"
+            renderItem={(cat) => (
+              <CategoryCard
+                category={cat}
+                productCount={categoryCounts[cat.id] || 0}
+              />
+            )}
+          />
+        </section>
+      )}
     </div>
   );
 };

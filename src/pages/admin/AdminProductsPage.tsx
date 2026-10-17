@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Product, Collection } from '../../types';
+import { Product, Collection, Category } from '../../types';
 import { productService } from '../../services/productService';
 import { collectionService } from '../../services/collectionService';
+import { categoryService } from '../../services/categoryService';
 import { useToast } from '../../components/common/Toast';
 import { formatCurrency } from '../../utils/formatters';
 import { Button } from '../../components/common/Button';
@@ -19,21 +20,25 @@ import {
   ExternalLink,
   Search,
   ShoppingCart,
+  Layers,
+  Boxes,
 } from 'lucide-react';
 
 export const AdminProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCollection, setSelectedCollection] = useState<string>('ALL');
+  const [selectedFilterOrg, setSelectedFilterOrg] = useState<string>('ALL');
   const [stockFilter, setStockFilter] = useState<'ALL' | 'IN_STOCK' | 'OUT_OF_STOCK' | 'HIDDEN'>('ALL');
 
   // Modal / Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [organizationType, setOrganizationType] = useState<'collection' | 'category'>('collection');
 
   // Sale Modal state
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
@@ -44,6 +49,7 @@ export const AdminProductsPage: React.FC = () => {
     name: '',
     slug: '',
     collectionId: '',
+    categoryId: '',
     description: '',
     price: 0,
     stockQuantity: 1,
@@ -63,12 +69,14 @@ export const AdminProductsPage: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [prods, cols] = await Promise.all([
+      const [prods, cols, cats] = await Promise.all([
         productService.getProducts(),
         collectionService.getCollections(false),
+        categoryService.getCategories(false),
       ]);
       setProducts(prods);
       setCollections(cols);
+      setCategories(cats);
     } catch (err) {
       console.error(err);
       error('Falha ao carregar lista de produtos');
@@ -83,10 +91,12 @@ export const AdminProductsPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setEditingProduct(null);
+    setOrganizationType('collection');
     setFormData({
       name: '',
       slug: '',
       collectionId: collections[0]?.id || '',
+      categoryId: categories[0]?.id || '',
       description: '',
       price: 99.90,
       stockQuantity: 1,
@@ -101,10 +111,13 @@ export const AdminProductsPage: React.FC = () => {
 
   const handleOpenEdit = (prod: Product) => {
     setEditingProduct(prod);
+    const isCat = Boolean(prod.categoryId && !prod.collectionId);
+    setOrganizationType(isCat ? 'category' : 'collection');
     setFormData({
       name: prod.name,
       slug: prod.slug,
-      collectionId: prod.collectionId,
+      collectionId: prod.collectionId || collections[0]?.id || '',
+      categoryId: prod.categoryId || categories[0]?.id || '',
       description: prod.description,
       price: prod.price,
       stockQuantity: prod.stockQuantity,
@@ -128,40 +141,38 @@ export const AdminProductsPage: React.FC = () => {
       error('O nome do produto é obrigatório.');
       return;
     }
-    if (!formData.collectionId) {
-      error('Selecione uma coleção para vincular o produto.');
+    if (organizationType === 'collection' && !formData.collectionId) {
+      error('Selecione uma Coleção TCG para vincular o produto.');
+      return;
+    }
+    if (organizationType === 'category' && !formData.categoryId) {
+      error('Selecione uma Linha de Produtos para vincular o produto.');
       return;
     }
 
     try {
+      const payload = {
+        name: formData.name,
+        slug: formData.slug || undefined,
+        collectionId: organizationType === 'collection' ? formData.collectionId : null,
+        categoryId: organizationType === 'category' ? formData.categoryId : null,
+        description: formData.description,
+        price: Number(formData.price),
+        stockQuantity: Number(formData.stockQuantity),
+        images: formData.images.length > 0 ? formData.images : ['https://images.unsplash.com/photo-1613770742268-3693246eb77a?q=80&w=1000&auto=format&fit=crop'],
+        isActive: formData.isActive,
+        rarity: formData.rarity,
+        language: formData.language,
+        condition: formData.condition,
+      };
+
       if (editingProduct) {
-        await productService.updateProduct(editingProduct.id, {
-          name: formData.name,
-          slug: formData.slug || undefined,
-          collectionId: formData.collectionId,
-          description: formData.description,
-          price: Number(formData.price),
-          stockQuantity: Number(formData.stockQuantity),
-          images: formData.images.length > 0 ? formData.images : ['https://images.unsplash.com/photo-1613770742268-3693246eb77a?q=80&w=1000&auto=format&fit=crop'],
-          isActive: formData.isActive,
-          rarity: formData.rarity,
-          language: formData.language,
-          condition: formData.condition,
-        });
+        await productService.updateProduct(editingProduct.id, payload);
         success(`Produto "${formData.name}" atualizado com sucesso!`);
       } else {
         await productService.createProduct({
-          name: formData.name,
+          ...payload,
           slug: formData.slug || '',
-          collectionId: formData.collectionId,
-          description: formData.description,
-          price: Number(formData.price),
-          stockQuantity: Number(formData.stockQuantity),
-          images: formData.images.length > 0 ? formData.images : ['https://images.unsplash.com/photo-1613770742268-3693246eb77a?q=80&w=1000&auto=format&fit=crop'],
-          isActive: formData.isActive,
-          rarity: formData.rarity,
-          language: formData.language,
-          condition: formData.condition,
         });
         success(`Produto "${formData.name}" adicionado com sucesso!`);
       }
@@ -214,8 +225,14 @@ export const AdminProductsPage: React.FC = () => {
       (p.rarity && p.rarity.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     if (!matchesSearch) return false;
 
-    if (selectedCollection !== 'ALL' && p.collectionId !== selectedCollection) {
-      return false;
+    if (selectedFilterOrg !== 'ALL') {
+      if (selectedFilterOrg.startsWith('col:')) {
+        const colId = selectedFilterOrg.replace('col:', '');
+        if (p.collectionId !== colId) return false;
+      } else if (selectedFilterOrg.startsWith('cat:')) {
+        const catId = selectedFilterOrg.replace('cat:', '');
+        if (p.categoryId !== catId) return false;
+      }
     }
 
     if (stockFilter === 'IN_STOCK' && p.stockQuantity <= 0) return false;
@@ -225,9 +242,16 @@ export const AdminProductsPage: React.FC = () => {
     return true;
   });
 
-  const getCollectionName = (id: string) => {
+  const getCollectionName = (id?: string | null) => {
+    if (!id) return '';
     const col = collections.find((c) => c.id === id);
     return col ? col.name : 'Coleção desconhecida';
+  };
+
+  const getCategoryName = (id?: string | null) => {
+    if (!id) return '';
+    const cat = categories.find((c) => c.id === id);
+    return cat ? cat.name : 'Linha desconhecida';
   };
 
   return (
@@ -277,19 +301,33 @@ export const AdminProductsPage: React.FC = () => {
         </div>
 
         {/* Filters */}
+        {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Collection select */}
+          {/* Organization filter select */}
           <select
-            value={selectedCollection}
-            onChange={(e) => setSelectedCollection(e.target.value)}
+            value={selectedFilterOrg}
+            onChange={(e) => setSelectedFilterOrg(e.target.value)}
             className="bg-trigon-950 border border-trigon-750 text-trigon-200 text-xs sm:text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-crimson-500"
           >
-            <option value="ALL">Todas as Coleções</option>
-            {collections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            <option value="ALL">Todas as Organizações</option>
+            {collections.length > 0 && (
+              <optgroup label="Coleções TCG">
+                {collections.map((c) => (
+                  <option key={c.id} value={`col:${c.id}`}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {categories.length > 0 && (
+              <optgroup label="Linhas de Produtos">
+                {categories.map((cat) => (
+                  <option key={cat.id} value={`cat:${cat.id}`}>
+                    {cat.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
 
           {/* Stock filter select */}
@@ -313,7 +351,7 @@ export const AdminProductsPage: React.FC = () => {
             <thead className="bg-trigon-950/80 border-b border-trigon-800 text-xs uppercase text-trigon-400 font-semibold tracking-wider">
               <tr>
                 <th className="px-5 py-4">Produto</th>
-                <th className="px-5 py-4">Coleção</th>
+                <th className="px-5 py-4">Organização</th>
                 <th className="px-5 py-4">Preço</th>
                 <th className="px-5 py-4">Estoque</th>
                 <th className="px-5 py-4">Status</th>
@@ -365,11 +403,21 @@ export const AdminProductsPage: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Collection */}
+                      {/* Organization (Collection or Category) */}
                       <td className="px-5 py-3">
-                        <span className="text-xs font-medium text-trigon-300 bg-trigon-950 px-2.5 py-1 rounded-lg border border-trigon-800">
-                          {getCollectionName(prod.collectionId)}
-                        </span>
+                        {prod.collectionId ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs text-trigon-200 bg-trigon-950 px-2.5 py-1 rounded-lg border border-trigon-800">
+                            <Layers className="w-3.5 h-3.5 text-crimson-400 shrink-0" />
+                            <span className="truncate max-w-[150px]">{getCollectionName(prod.collectionId)}</span>
+                          </div>
+                        ) : prod.categoryId ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs text-amber-300 bg-trigon-950 px-2.5 py-1 rounded-lg border border-amber-900/40">
+                            <Boxes className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate max-w-[150px]">{getCategoryName(prod.categoryId)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-trigon-500 italic">Sem vínculo</span>
+                        )}
                       </td>
 
                       {/* Price */}
@@ -498,27 +546,83 @@ export const AdminProductsPage: React.FC = () => {
               />
             </div>
 
-            {/* Collection */}
-            <div>
+            {/* Organization Type Selector */}
+            <div className="sm:col-span-2 space-y-1.5">
               <label className="block text-xs font-semibold uppercase text-trigon-300 mb-1">
-                Coleção Vinculada *
+                Tipo de Organização *
               </label>
-              <select
-                value={formData.collectionId}
-                onChange={(e) =>
-                  setFormData({ ...formData, collectionId: e.target.value })
-                }
-                className="w-full px-3.5 py-2.5 rounded-xl bg-trigon-950 border border-trigon-750 text-white text-sm focus:outline-none focus:border-crimson-500"
-                required
-              >
-                <option value="" disabled>Selecione uma coleção</option>
-                {collections.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrganizationType('collection')}
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                    organizationType === 'collection'
+                      ? 'bg-crimson-950/80 border-crimson-600/70 text-white shadow-sm'
+                      : 'bg-trigon-950 border-trigon-800 text-trigon-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-4 h-4 text-crimson-400" />
+                  <span>Coleção TCG</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrganizationType('category')}
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
+                    organizationType === 'category'
+                      ? 'bg-crimson-950/80 border-crimson-600/70 text-white shadow-sm'
+                      : 'bg-trigon-950 border-trigon-800 text-trigon-400 hover:text-white'
+                  }`}
+                >
+                  <Boxes className="w-4 h-4 text-crimson-400" />
+                  <span>Linha de Produtos</span>
+                </button>
+              </div>
             </div>
+
+            {/* Dynamic Selector: Collection vs Category */}
+            {organizationType === 'collection' ? (
+              <div>
+                <label className="block text-xs font-semibold uppercase text-trigon-300 mb-1">
+                  Coleção TCG Vinculada *
+                </label>
+                <select
+                  value={formData.collectionId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, collectionId: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-trigon-950 border border-trigon-750 text-white text-sm focus:outline-none focus:border-crimson-500"
+                  required
+                >
+                  <option value="" disabled>Selecione uma coleção TCG</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold uppercase text-trigon-300 mb-1">
+                  Linha de Produtos Vinculada *
+                </label>
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, categoryId: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-trigon-950 border border-trigon-750 text-white text-sm focus:outline-none focus:border-crimson-500"
+                  required
+                >
+                  <option value="" disabled>Selecione uma linha de produtos</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Slug */}
             <div>
@@ -605,11 +709,16 @@ export const AdminProductsPage: React.FC = () => {
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold uppercase text-trigon-300 mb-1">
-              Descrição Completa
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold uppercase text-trigon-300">
+                Descrição Completa
+              </label>
+              <span className="text-[11px] text-trigon-400">
+                Dica: use <span className="text-amber-400 font-mono font-medium">*texto*</span> para <strong>negrito</strong> e <span className="text-amber-400 font-mono font-medium">_texto_</span> para <em>itálico</em>
+              </span>
+            </div>
             <textarea
-              rows={3}
+              rows={4}
               value={formData.description}
               onChange={(e) =>
                 setFormData({ ...formData, description: e.target.value })

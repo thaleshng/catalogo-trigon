@@ -10,7 +10,7 @@ interface ImageUploaderProps {
   multiple?: boolean;
   maxImages?: number;
   label?: string;
-  folder?: 'products' | 'collections';
+  folder?: 'products' | 'collections' | 'categories' | 'gifts' | 'quests';
 }
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({

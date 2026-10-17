@@ -5,6 +5,7 @@ import { collectionService } from '../services/collectionService';
 import { productService } from '../services/productService';
 import { ProductCard } from '../components/catalog/ProductCard';
 import { Breadcrumbs } from '../components/common/Breadcrumbs';
+import { FormattedText } from '../components/common/FormattedText';
 import { Search, SlidersHorizontal, Layers, ArrowLeft, PackageX } from 'lucide-react';
 
 export const CollectionPage: React.FC = () => {
@@ -130,7 +131,7 @@ export const CollectionPage: React.FC = () => {
                 {collection.name}
               </h1>
               <p className="text-sm sm:text-base text-trigon-300 leading-relaxed">
-                {collection.description}
+                <FormattedText text={collection.description} />
               </p>
             </div>
 

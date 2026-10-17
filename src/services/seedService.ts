@@ -49,6 +49,7 @@ export const seedService = {
 
       let insertedProducts = 0;
       for (const prod of INITIAL_PRODUCTS) {
+        if (!prod.collectionId) continue;
         const targetColId = colIdMap[prod.collectionId];
         if (!targetColId) continue;
 

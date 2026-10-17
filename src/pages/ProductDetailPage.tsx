@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Product, Collection } from '../types';
+import { Product, Collection, Category } from '../types';
 import { productService } from '../services/productService';
 import { collectionService } from '../services/collectionService';
+import { categoryService } from '../services/categoryService';
 import { SITE_CONFIG } from '../config/site';
 import { formatCurrency } from '../utils/formatters';
 import { ProductGallery } from '../components/catalog/ProductGallery';
 import { Breadcrumbs } from '../components/common/Breadcrumbs';
 import { Badge } from '../components/common/Badge';
 import { useToast } from '../components/common/Toast';
+import { FormattedText } from '../components/common/FormattedText';
 import {
   MessageCircle,
   ShieldCheck,
   Layers,
+  Boxes,
   ArrowLeft,
   Share2,
   AlertCircle,
@@ -24,6 +27,7 @@ export const ProductDetailPage: React.FC = () => {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
+  const [category, setCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const { success } = useToast();
@@ -43,10 +47,13 @@ export const ProductDetailPage: React.FC = () => {
 
         setProduct(prod);
 
-        // Busca dados da coleção associada
+        // Busca dados da coleção ou linha associada
         if (prod.collectionId) {
           const col = await collectionService.getCollectionById(prod.collectionId);
           setCollection(col);
+        } else if (prod.categoryId) {
+          const cat = await categoryService.getCategoryById(prod.categoryId);
+          setCategory(cat);
         }
       } catch (err) {
         console.error('Erro ao carregar produto:', err);
@@ -116,6 +123,8 @@ export const ProductDetailPage: React.FC = () => {
         items={[
           ...(collection
             ? [{ label: collection.name, href: `/colecoes/${collection.slug}` }]
+            : category
+            ? [{ label: category.name, href: `/linhas/${category.slug}` }]
             : []),
           { label: product.name },
         ]}
@@ -141,6 +150,15 @@ export const ProductDetailPage: React.FC = () => {
                 >
                   <Layers className="w-3 h-3 text-crimson-400" />
                   <span>{collection.name}</span>
+                </Link>
+              )}
+              {category && (
+                <Link
+                  to={`/linhas/${category.slug}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-trigon-900 border border-trigon-750 text-trigon-300 hover:text-crimson-400 hover:border-crimson-600/50 transition-colors"
+                >
+                  <Boxes className="w-3 h-3 text-crimson-400" />
+                  <span>{category.name}</span>
                 </Link>
               )}
               {product.rarity && (
@@ -263,8 +281,8 @@ export const ProductDetailPage: React.FC = () => {
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">
               Descrição do Produto
             </h3>
-            <div className="p-5 rounded-2xl bg-trigon-900/60 border border-trigon-800 text-sm text-trigon-200 leading-relaxed whitespace-pre-line font-light">
-              {product.description}
+            <div className="p-5 rounded-2xl bg-trigon-900/60 border border-trigon-800 text-sm text-trigon-200 leading-relaxed font-light">
+              <FormattedText text={product.description} />
             </div>
           </div>
 
@@ -275,7 +293,9 @@ export const ProductDetailPage: React.FC = () => {
               <strong className="text-white block font-semibold mb-0.5">
                 Padrão de Envio TRIGON:
               </strong>
-              Cartas individuais enviadas em Perfect Fit + Sleeve Matte + Toploader rígido selado com team-bag contra umidade. Caixas e ETBs enviadas com plástico bolha de alta densidade e caixa reforçada.
+              <FormattedText
+                text="Cartas individuais enviadas em Perfect Fit + Sleeve Matte + Toploader rígido selado com team-bag contra umidade. *Demais produtos TCG, incluindo boxes, ETBs, blisters, kits e outros itens colecionáveis,* são cuidadosamente embalados com materiais de proteção adequados a cada formato, garantindo maior segurança durante o transporte."
+              />
             </div>
           </div>
         </div>

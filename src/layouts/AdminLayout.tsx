@@ -15,6 +15,9 @@ import {
   LogOut,
   ChevronRight,
   Users,
+  Gift,
+  Compass,
+  Boxes,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
@@ -44,8 +47,14 @@ export const AdminLayout: React.FC = () => {
     {
       to: '/admin/colecoes',
       end: false,
-      label: 'Coleções',
+      label: 'Coleções TCG',
       icon: <Layers className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/linhas',
+      end: false,
+      label: 'Linhas de Produtos',
+      icon: <Boxes className="w-5 h-5" />,
     },
     {
       to: '/admin/produtos',
@@ -64,6 +73,18 @@ export const AdminLayout: React.FC = () => {
       end: false,
       label: 'Clientes',
       icon: <Users className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/brindes',
+      end: false,
+      label: 'Brindes',
+      icon: <Gift className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/quests',
+      end: false,
+      label: 'Quests',
+      icon: <Compass className="w-5 h-5" />,
     },
   ];
 

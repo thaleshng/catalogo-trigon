@@ -229,10 +229,10 @@ export const AdminCollectionsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="font-cinzel text-2xl sm:text-3xl font-extrabold text-white tracking-wide">
-            Gerenciamento de Coleções
+            Coleções TCG
           </h1>
           <p className="text-sm text-trigon-400 mt-1">
-            Cadastre novas coleções, edite detalhes e controle a visibilidade pública
+            Cadastre novas coleções oficiais de Pokémon TCG, edite detalhes e controle a visibilidade pública
           </p>
         </div>
 
@@ -241,7 +241,7 @@ export const AdminCollectionsPage: React.FC = () => {
           onClick={handleOpenCreate}
           icon={<Plus className="w-4 h-4" />}
         >
-          Nova Coleção
+          Nova Coleção TCG
         </Button>
       </div>
 

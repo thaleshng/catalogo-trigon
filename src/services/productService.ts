@@ -4,6 +4,7 @@ import { slugify } from '../utils/slugify';
 
 export interface ProductFilters {
   collectionId?: string;
+  categoryId?: string;
   search?: string;
   onlyActive?: boolean;
   inStockOnly?: boolean;
@@ -12,7 +13,8 @@ export interface ProductFilters {
 function mapProduct(row: any): Product {
   return {
     id: row.id,
-    collectionId: row.collection_id,
+    collectionId: row.collection_id || null,
+    categoryId: row.category_id || null,
     name: row.name,
     slug: row.slug,
     description: row.description || '',
@@ -45,6 +47,10 @@ export const productService = {
 
     if (filters.collectionId) {
       query = query.eq('collection_id', filters.collectionId);
+    }
+
+    if (filters.categoryId) {
+      query = query.eq('category_id', filters.categoryId);
     }
 
     if (filters.inStockOnly) {
@@ -112,7 +118,8 @@ export const productService = {
     const { data: created, error } = await supabase
       .from('products')
       .insert({
-        collection_id: data.collectionId,
+        collection_id: data.collectionId || null,
+        category_id: data.categoryId || null,
         name: data.name.trim(),
         slug: finalSlug,
         description: data.description || '',
@@ -149,7 +156,8 @@ export const productService = {
 
     if (data.name !== undefined) payload.name = data.name.trim();
     if (data.slug !== undefined) payload.slug = data.slug.trim();
-    if (data.collectionId !== undefined) payload.collection_id = data.collectionId;
+    if (data.collectionId !== undefined) payload.collection_id = data.collectionId || null;
+    if (data.categoryId !== undefined) payload.category_id = data.categoryId || null;
     if (data.description !== undefined) payload.description = data.description;
     if (data.price !== undefined) payload.price = Math.max(0, Number(data.price));
     if (data.stockQuantity !== undefined) payload.stock_quantity = Math.max(0, Number(data.stockQuantity));

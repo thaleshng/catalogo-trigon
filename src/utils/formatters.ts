@@ -9,12 +9,13 @@ export function formatCurrency(value: number): string {
 }
 
 /**
- * Formata data no padrão brasileiro (DD/MM/AAAA)
+ * Formata data no padrão brasileiro (DD/MM/AAAA) no fuso de São Paulo (UTC-3)
  */
 export function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -25,12 +26,13 @@ export function formatDate(dateString: string): string {
 }
 
 /**
- * Formata data e hora no padrão brasileiro (DD/MM/AAAA às HH:mm)
+ * Formata data e hora no padrão brasileiro (DD/MM/AAAA às HH:mm) no fuso de São Paulo (UTC-3)
  */
 export function formatDateTime(dateString: string): string {
   try {
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -40,6 +42,27 @@ export function formatDateTime(dateString: string): string {
   } catch {
     return dateString;
   }
+}
+
+/**
+ * Retorna a data e hora atual no fuso de São Paulo (UTC-3) formatada para input datetime-local (YYYY-MM-DDTHH:mm)
+ */
+export function getSaoPauloDateTimeLocal(date: Date = new Date()): string {
+  const spString = date.toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  return spString.replace(' ', 'T').slice(0, 16);
+}
+
+/**
+ * Converte um valor de datetime-local (YYYY-MM-DDTHH:mm) considerando o fuso de São Paulo (-03:00) para ISO string
+ */
+export function parseSaoPauloDateTime(dateStr: string): string {
+  if (!dateStr) return new Date().toISOString();
+  if (dateStr.includes('Z') || dateStr.includes('+') || (dateStr.length > 19 && dateStr.includes('-'))) {
+    return new Date(dateStr).toISOString();
+  }
+  const parts = dateStr.split(':');
+  const fullStr = parts.length === 3 ? `${dateStr}-03:00` : `${dateStr}:00-03:00`;
+  return new Date(fullStr).toISOString();
 }
 
 /**
