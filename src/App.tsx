@@ -20,6 +20,7 @@ import { AdminStockPage } from './pages/admin/AdminStockPage';
 import { AdminCustomersPage } from './pages/admin/AdminCustomersPage';
 import { AdminGiftsPage } from './pages/admin/AdminGiftsPage';
 import { AdminQuestsPage } from './pages/admin/AdminQuestsPage';
+import { AdminCalculatorsPage } from './pages/admin/AdminCalculatorsPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { seedService } from './services/seedService';
 
@@ -62,6 +63,7 @@ export const App: React.FC = () => {
             <Route path="clientes" element={<AdminCustomersPage />} />
             <Route path="brindes" element={<AdminGiftsPage />} />
             <Route path="quests" element={<AdminQuestsPage />} />
+            <Route path="calculadoras" element={<AdminCalculatorsPage />} />
           </Route>
 
           {/* Fallback para rotas inexistentes */}

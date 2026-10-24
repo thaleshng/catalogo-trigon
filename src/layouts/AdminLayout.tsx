@@ -18,6 +18,7 @@ import {
   Gift,
   Compass,
   Boxes,
+  Calculator,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
@@ -85,6 +86,12 @@ export const AdminLayout: React.FC = () => {
       end: false,
       label: 'Quests',
       icon: <Compass className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/calculadoras',
+      end: false,
+      label: 'Calculadoras',
+      icon: <Calculator className="w-5 h-5" />,
     },
   ];
 
