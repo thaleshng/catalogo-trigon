@@ -21,6 +21,9 @@ import { AdminCustomersPage } from './pages/admin/AdminCustomersPage';
 import { AdminGiftsPage } from './pages/admin/AdminGiftsPage';
 import { AdminQuestsPage } from './pages/admin/AdminQuestsPage';
 import { AdminCalculatorsPage } from './pages/admin/AdminCalculatorsPage';
+import { AdminCardsCatalogPage } from './pages/admin/AdminCardsCatalogPage';
+import { AdminCardStockPage } from './pages/admin/AdminCardStockPage';
+import { AdminAuctionsPage } from './pages/admin/AdminAuctionsPage';
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { seedService } from './services/seedService';
 
@@ -60,6 +63,9 @@ export const App: React.FC = () => {
             <Route path="categorias" element={<AdminCategoriesPage />} />
             <Route path="produtos" element={<AdminProductsPage />} />
             <Route path="estoque" element={<AdminStockPage />} />
+            <Route path="cartas" element={<AdminCardsCatalogPage />} />
+            <Route path="estoque-cartas" element={<AdminCardStockPage />} />
+            <Route path="leiloes" element={<AdminAuctionsPage />} />
             <Route path="clientes" element={<AdminCustomersPage />} />
             <Route path="brindes" element={<AdminGiftsPage />} />
             <Route path="quests" element={<AdminQuestsPage />} />

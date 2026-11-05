@@ -187,6 +187,19 @@ export const collectionService = {
       };
     }
 
+    // Verifica variantes de cartas vinculadas no estoque de cartas TCG
+    const { count: cardVariantsCount, error: cardVariantsErr } = await supabase
+      .from('tcg_card_variants')
+      .select('*', { count: 'exact', head: true })
+      .eq('collection_id', id);
+
+    if (!cardVariantsErr && cardVariantsCount && cardVariantsCount > 0) {
+      return {
+        success: false,
+        error: `Não é possível excluir: existem ${cardVariantsCount} variante(s) no Estoque de Cartas TCG vinculadas a esta coleção.`,
+      };
+    }
+
     if (forceDeleteWithProducts && count && count > 0) {
       await supabase.from('products').delete().eq('collection_id', id);
     }

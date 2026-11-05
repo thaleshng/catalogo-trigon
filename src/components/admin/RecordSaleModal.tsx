@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, Customer } from '../../types';
 import { stockService } from '../../services/stockService';
 import { customerService } from '../../services/customerService';
+import { customerVaultService } from '../../services/customerVaultService';
 import { formatCurrency } from '../../utils/formatters';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
@@ -43,6 +44,7 @@ export const RecordSaleModal: React.FC<RecordSaleModalProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [notes, setNotes] = useState<string>('');
+  const [saveToVault, setSaveToVault] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState(false);
 
   const { success, error } = useToast();
@@ -53,6 +55,7 @@ export const RecordSaleModal: React.FC<RecordSaleModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       customerService.getCustomers().then(setCustomers).catch(console.error);
+      setSaveToVault(true);
     }
   }, [isOpen]);
 
@@ -120,9 +123,25 @@ export const RecordSaleModal: React.FC<RecordSaleModalProps> = ({
         notes,
       });
 
-      success(
-        `Venda registrada com sucesso! ${quantity} un. de "${currentProduct.name}" por ${formatCurrency(totalSale)}.`
-      );
+      if (saveToVault && selectedCustomerId && selectedCustomerId !== 'custom') {
+        const targetCustomer = customers.find((c) => c.id === selectedCustomerId);
+        await customerVaultService.addCatalogProductToVault({
+          customerId: selectedCustomerId,
+          customerName: targetCustomer?.name || customerName.trim() || 'Cliente',
+          product: currentProduct,
+          quantity,
+          unitPrice,
+          notes,
+        });
+
+        success(
+          `Venda registrada e ${quantity} un. de "${currentProduct.name}" guardadas na Gaveta de ${targetCustomer?.name || 'Cliente'}!`
+        );
+      } else {
+        success(
+          `Venda registrada com sucesso! ${quantity} un. de "${currentProduct.name}" por ${formatCurrency(totalSale)}.`
+        );
+      }
       onSaleSuccess();
       onClose();
     } catch (err: any) {
@@ -500,6 +519,48 @@ export const RecordSaleModal: React.FC<RecordSaleModalProps> = ({
             />
           </div>
         </div>
+
+        {/* Integração Gaveta de Envio & Quest Trigon */}
+        {selectedCustomerId && selectedCustomerId !== 'custom' && (
+          <div
+            className={`p-3.5 rounded-xl border transition-all ${
+              saveToVault
+                ? 'bg-crimson-950/40 border-crimson-500/60 shadow-sm'
+                : 'bg-trigon-950/70 border-trigon-800'
+            }`}
+          >
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={saveToVault}
+                onChange={(e) => setSaveToVault(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-trigon-700 bg-trigon-900 text-crimson-600 focus:ring-crimson-500 cursor-pointer"
+              />
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-crimson-400" />
+                    Guardar na Gaveta de Envio deste cliente
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
+                    + Quest Trigon
+                  </span>
+                </div>
+                <p className="text-[11px] text-trigon-300 leading-relaxed">
+                  {saveToVault ? (
+                    <span>
+                      ✓ O produto será guardado como <strong className="text-white">Pago</strong> na gaveta de <strong className="text-white">{customers.find((c) => c.id === selectedCustomerId)?.name || customerName}</strong>, acumulando <strong className="text-emerald-400">{formatCurrency(totalSale)}</strong> para a meta da Quest (R$ 100) para envio conjunto com leilões.
+                    </span>
+                  ) : (
+                    <span>
+                      Desmarcado: o produto será registrado como venda direta entregue/despachada de imediato (não vai para a gaveta).
+                    </span>
+                  )}
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
 
         {/* Actions Footer */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-trigon-800">

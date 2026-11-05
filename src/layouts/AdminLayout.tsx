@@ -19,6 +19,9 @@ import {
   Compass,
   Boxes,
   Calculator,
+  Sparkles,
+  FolderKanban,
+  Gavel,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
@@ -68,6 +71,24 @@ export const AdminLayout: React.FC = () => {
       end: false,
       label: 'Controle de Estoque',
       icon: <ArrowLeftRight className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/cartas',
+      end: false,
+      label: 'Cartas TCG (Catálogo)',
+      icon: <Sparkles className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/estoque-cartas',
+      end: false,
+      label: 'Estoque de Cartas TCG',
+      icon: <FolderKanban className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/leiloes',
+      end: false,
+      label: 'Leilões',
+      icon: <Gavel className="w-5 h-5" />,
     },
     {
       to: '/admin/clientes',

@@ -23,9 +23,12 @@ import {
   Check,
   Gift,
   Compass,
+  Package,
 } from 'lucide-react';
 import { CustomerGiftsModal } from '../../components/admin/CustomerGiftsModal';
 import { CustomerQuestModal } from '../../components/admin/CustomerQuestModal';
+import { CustomerVaultModal } from '../../components/admin/CustomerVaultModal';
+import { customerVaultService } from '../../services/customerVaultService';
 
 export const AdminCustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -45,6 +48,11 @@ export const AdminCustomersPage: React.FC = () => {
   // Customer Quest Modal State
   const [questCustomer, setQuestCustomer] = useState<Customer | null>(null);
   const [isQuestModalOpen, setIsQuestModalOpen] = useState(false);
+
+  // Customer Vault Modal State (Gaveta de Envio & Carrinho Consolidado)
+  const [vaultCustomer, setVaultCustomer] = useState<Customer | null>(null);
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [pendingVaultCounts, setPendingVaultCounts] = useState<Map<string, number>>(new Map());
 
   const emptyForm = {
     name: '',
@@ -72,8 +80,12 @@ export const AdminCustomersPage: React.FC = () => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const data = await customerService.getCustomers();
+      const [data, counts] = await Promise.all([
+        customerService.getCustomers(),
+        customerVaultService.getPendingVaultCountsMap(),
+      ]);
       setCustomers(data);
+      setPendingVaultCounts(counts);
     } catch (err: any) {
       console.error(err);
       error('Falha ao carregar lista de clientes');
@@ -119,6 +131,11 @@ export const AdminCustomersPage: React.FC = () => {
   const handleOpenQuest = (customer: Customer) => {
     setQuestCustomer(customer);
     setIsQuestModalOpen(true);
+  };
+
+  const handleOpenVault = (customer: Customer) => {
+    setVaultCustomer(customer);
+    setIsVaultModalOpen(true);
   };
 
   const handleCepChange = async (val: string) => {
@@ -449,6 +466,20 @@ export const AdminCustomersPage: React.FC = () => {
                           <Compass className="w-3.5 h-3.5" />
                         </button>
 
+                        {/* Gaveta de Envio & Carrinho Consolidado */}
+                        <button
+                          onClick={() => handleOpenVault(cust)}
+                          className="p-1.5 rounded-lg border border-cyan-800/50 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/40 transition-colors relative"
+                          title="Gaveta de Envio & Carrinho Consolidado (Cartas Pagas + Estoque)"
+                        >
+                          <Package className="w-3.5 h-3.5" />
+                          {(pendingVaultCounts.get(cust.id) || 0) > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-crimson-600 text-[9px] font-bold text-white flex items-center justify-center border border-trigon-950 shadow-sm animate-pulse">
+                              {pendingVaultCounts.get(cust.id)}
+                            </span>
+                          )}
+                        </button>
+
                         <button
                           onClick={() => handleOpenEdit(cust)}
                           className="p-1.5 rounded-lg border border-trigon-750 text-trigon-300 hover:text-white hover:bg-trigon-800 transition-colors"
@@ -747,6 +778,17 @@ export const AdminCustomersPage: React.FC = () => {
           setQuestCustomer(null);
         }}
         customer={questCustomer}
+      />
+
+      {/* Modal da Gaveta de Envio & Carrinho Consolidado */}
+      <CustomerVaultModal
+        isOpen={isVaultModalOpen}
+        onClose={() => {
+          setIsVaultModalOpen(false);
+          setVaultCustomer(null);
+        }}
+        customer={vaultCustomer}
+        onSuccess={loadCustomers}
       />
     </div>
   );
