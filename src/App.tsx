@@ -17,6 +17,7 @@ import { AdminCollectionsPage } from './pages/admin/AdminCollectionsPage';
 import { AdminCategoriesPage } from './pages/admin/AdminCategoriesPage';
 import { AdminProductsPage } from './pages/admin/AdminProductsPage';
 import { AdminStockPage } from './pages/admin/AdminStockPage';
+import { AdminSalesPage } from './pages/admin/AdminSalesPage';
 import { AdminCustomersPage } from './pages/admin/AdminCustomersPage';
 import { AdminGiftsPage } from './pages/admin/AdminGiftsPage';
 import { AdminQuestsPage } from './pages/admin/AdminQuestsPage';
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
             <Route path="categorias" element={<AdminCategoriesPage />} />
             <Route path="produtos" element={<AdminProductsPage />} />
             <Route path="estoque" element={<AdminStockPage />} />
+            <Route path="vendas" element={<AdminSalesPage />} />
             <Route path="cartas" element={<AdminCardsCatalogPage />} />
             <Route path="estoque-cartas" element={<AdminCardStockPage />} />
             <Route path="leiloes" element={<AdminAuctionsPage />} />

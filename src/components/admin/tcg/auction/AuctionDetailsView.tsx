@@ -16,6 +16,7 @@ import {
 } from '../../../../utils/formatters';
 import { Modal } from '../../../../components/common/Modal';
 import { Button } from '../../../../components/common/Button';
+import { ConfirmDialog } from '../../../../components/common/ConfirmDialog';
 import { useToast } from '../../../../components/common/Toast';
 import { auctionService } from '../../../../services/auctionService';
 import { customerService } from '../../../../services/customerService';
@@ -204,7 +205,21 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
     loadData();
   }, [auctionId, refreshTrigger]);
 
-  const handleStartAuction = async () => {
+  // Estados para diálogos de confirmação customizados (substituindo window.confirm)
+  const [isStartAuctionDialogOpen, setIsStartAuctionDialogOpen] = useState(false);
+  const [isFinishAuctionDialogOpen, setIsFinishAuctionDialogOpen] = useState(false);
+  const [itemToMarkNaoArrematado, setItemToMarkNaoArrematado] = useState<TcgAuctionItem | null>(null);
+  const [itemToRemove, setItemToRemove] = useState<TcgAuctionItem | null>(null);
+  const [isMarkAllUnsoldConfirmOpen, setIsMarkAllUnsoldConfirmOpen] = useState(false);
+  const [confirmDialogLoading, setConfirmDialogLoading] = useState(false);
+
+  // Contagem de lotes ainda pendentes de arremate (status EM_LEILAO)
+  const pendingLotsCount = useMemo(
+    () => items.filter((i) => i.status === 'EM_LEILAO').length,
+    [items]
+  );
+
+  const handleRequestStartAuction = () => {
     if (!auction) return;
     const now = Date.now();
     const startTime = new Date(auction.startDate).getTime();
@@ -214,18 +229,26 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
       );
       return;
     }
+    setIsStartAuctionDialogOpen(true);
+  };
 
+  const handleConfirmStartAuction = async () => {
+    if (!auction) return;
     try {
+      setConfirmDialogLoading(true);
       await auctionService.startAuction(auction.id);
       success(`Leilão #${auction.code} foi iniciado oficialmente!`);
+      setIsStartAuctionDialogOpen(false);
       loadData();
       onRefreshAuctions();
     } catch (err: any) {
       error(err.message || 'Não foi possível iniciar o leilão.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
-  const handleFinishAuction = async () => {
+  const handleRequestFinishAuction = () => {
     if (!auction) return;
     const now = Date.now();
     const endTime = new Date(auction.endDate).getTime();
@@ -235,22 +258,22 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
       );
       return;
     }
+    setIsFinishAuctionDialogOpen(true);
+  };
 
-    if (
-      !window.confirm(
-        `Deseja realmente finalizar o Leilão #${auction.code}? As cartas não arrematadas serão devolvidas automaticamente ao estoque.`
-      )
-    ) {
-      return;
-    }
-
+  const handleConfirmFinishAuction = async () => {
+    if (!auction) return;
     try {
+      setConfirmDialogLoading(true);
       await auctionService.finishAuction(auction.id);
       success(`Leilão #${auction.code} finalizado com sucesso!`);
+      setIsFinishAuctionDialogOpen(false);
       loadData();
       onRefreshAuctions();
     } catch (err: any) {
       error(err.message || 'Erro ao finalizar leilão.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
@@ -471,38 +494,75 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
     }
   };
 
-  const handleMarkNaoArrematado = async (item: TcgAuctionItem) => {
+  const handleRequestMarkNaoArrematado = (item: TcgAuctionItem) => {
     if (auction?.status === 'PRE_LEILAO') {
       info('Este leilão ainda está em fase de pré-leilão. Inicie o leilão oficialmente antes de marcar lotes.');
       return;
     }
-    if (
-      !window.confirm(
-        `Marcar "${item.title}" como NÃO ARREMATADA? A carta voltará automaticamente ao estoque com +1 unidade.`
-      )
-    ) {
-      return;
-    }
+    setItemToMarkNaoArrematado(item);
+  };
 
+  const handleConfirmMarkNaoArrematado = async () => {
+    if (!itemToMarkNaoArrematado) return;
     try {
-      await auctionService.markItemNaoArrematado(item.id);
+      setConfirmDialogLoading(true);
+      await auctionService.markItemNaoArrematado(itemToMarkNaoArrematado.id);
       success(`Lote marcado como não arrematado e devolvido ao estoque!`);
+      setItemToMarkNaoArrematado(null);
       loadData();
       onRefreshAuctions();
     } catch (err: any) {
       error(err.message || 'Erro ao atualizar lote.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
-  const handleRemoveItem = async (item: TcgAuctionItem) => {
-    if (!window.confirm(`Remover "${item.title}" deste leilão?`)) return;
+  const handleRequestRemoveItem = (item: TcgAuctionItem) => {
+    setItemToRemove(item);
+  };
+
+  const handleConfirmRemoveItem = async () => {
+    if (!itemToRemove) return;
     try {
-      await auctionService.removeAuctionItem(item.id);
+      setConfirmDialogLoading(true);
+      await auctionService.removeAuctionItem(itemToRemove.id);
       success('Item removido do leilão.');
+      setItemToRemove(null);
       loadData();
       onRefreshAuctions();
     } catch (err: any) {
       error(err.message || 'Erro ao remover item.');
+    } finally {
+      setConfirmDialogLoading(false);
+    }
+  };
+
+  const handleRequestMarkAllUnsold = () => {
+    if (auction?.status === 'PRE_LEILAO') {
+      info('Este leilão ainda está em fase de pré-leilão. Inicie o leilão oficialmente antes de marcar lotes.');
+      return;
+    }
+    if (pendingLotsCount === 0) {
+      info('Não há lotes pendentes para marcar como "Não Saiu".');
+      return;
+    }
+    setIsMarkAllUnsoldConfirmOpen(true);
+  };
+
+  const handleConfirmMarkAllUnsold = async () => {
+    if (!auction) return;
+    try {
+      setConfirmDialogLoading(true);
+      const res = await auctionService.markAllUnsoldAsNaoArrematado(auction.id);
+      success(`${res.count} lotes marcados como "Não Saiu" e devolvidos ao estoque da loja!`);
+      setIsMarkAllUnsoldConfirmOpen(false);
+      loadData();
+      onRefreshAuctions();
+    } catch (err: any) {
+      error(err.message || 'Erro ao processar lotes não arrematados.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
@@ -702,7 +762,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
               <Button
                 type="button"
                 variant="primary"
-                onClick={handleStartAuction}
+                onClick={handleRequestStartAuction}
                 icon={<Play className="w-4 h-4 fill-current shrink-0" />}
                 className="h-10 text-xs font-bold whitespace-nowrap"
               >
@@ -730,7 +790,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
               <Button
                 type="button"
                 variant="danger"
-                onClick={handleFinishAuction}
+                onClick={handleRequestFinishAuction}
                 icon={<CheckCircle2 className="w-4 h-4 shrink-0" />}
                 className="h-10 text-xs font-bold whitespace-nowrap"
               >
@@ -849,10 +909,26 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
 
       {/* Listagem de Lotes / Itens */}
       <div className="space-y-3">
-        <h3 className="font-cinzel text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-          <Package className="w-4 h-4 text-crimson-400" />
-          <span>Lotes Cadastrados no Leilão ({items.length})</span>
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="font-cinzel text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <Package className="w-4 h-4 text-crimson-400" />
+            <span>Lotes Cadastrados no Leilão ({items.length})</span>
+          </h3>
+
+          {/* Botão em Lote: Marcar Todos Não Arrematados */}
+          {pendingLotsCount > 0 && !isPreLeilao && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRequestMarkAllUnsold}
+              className="text-amber-400 border-amber-500/40 hover:bg-amber-950/40 text-xs font-semibold whitespace-nowrap shadow-sm"
+              icon={<XCircle className="w-3.5 h-3.5 text-amber-400" />}
+            >
+              Marcar Todos Não Arrematados ({pendingLotsCount}) como &quot;Não Saiu&quot;
+            </Button>
+          )}
+        </div>
 
         {items.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-trigon-950 border border-trigon-800 space-y-3">
@@ -1283,7 +1359,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
 
                             <button
                               type="button"
-                              onClick={() => handleMarkNaoArrematado(item)}
+                              onClick={() => handleRequestMarkNaoArrematado(item)}
                               title="Não arrematada (devolve ao estoque)"
                               className="px-2.5 py-2 rounded-xl bg-trigon-900 hover:bg-trigon-850 border border-trigon-750 text-xs text-trigon-400 hover:text-white transition-all shrink-0"
                             >
@@ -1306,7 +1382,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
                       {/* Excluir Lote */}
                       <button
                         type="button"
-                        onClick={() => handleRemoveItem(item)}
+                        onClick={() => handleRequestRemoveItem(item)}
                         title="Remover lote do leilão"
                         className="p-2 rounded-lg text-trigon-500 hover:text-crimson-400 hover:bg-crimson-950/40 transition-colors shrink-0"
                       >
@@ -2173,6 +2249,71 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Diálogo de Confirmação: Iniciar Leilão */}
+      <ConfirmDialog
+        isOpen={isStartAuctionDialogOpen}
+        onClose={() => setIsStartAuctionDialogOpen(false)}
+        onConfirm={handleConfirmStartAuction}
+        title={`Iniciar Leilão #${auction?.code} Oficialmente?`}
+        message={`Deseja realmente iniciar o Leilão #${auction?.code}? O status passará para "Em Andamento" e os arremates dos lotes poderão ser registrados.`}
+        confirmText="Sim, Iniciar Leilão"
+        cancelText="Voltar"
+        variant="primary"
+        loading={confirmDialogLoading}
+      />
+
+      {/* Diálogo de Confirmação: Finalizar Leilão */}
+      <ConfirmDialog
+        isOpen={isFinishAuctionDialogOpen}
+        onClose={() => setIsFinishAuctionDialogOpen(false)}
+        onConfirm={handleConfirmFinishAuction}
+        title={`Finalizar Leilão #${auction?.code}?`}
+        message={`Deseja realmente finalizar o Leilão #${auction?.code}? As cartas que não foram arrematadas serão devolvidas automaticamente ao estoque da loja.`}
+        confirmText="Sim, Finalizar Leilão"
+        cancelText="Cancelar"
+        variant="danger"
+        loading={confirmDialogLoading}
+      />
+
+      {/* Diálogo de Confirmação: Marcar como Não Arrematada */}
+      <ConfirmDialog
+        isOpen={Boolean(itemToMarkNaoArrematado)}
+        onClose={() => setItemToMarkNaoArrematado(null)}
+        onConfirm={handleConfirmMarkNaoArrematado}
+        title="Marcar Lote como Não Arrematado?"
+        message={`Marcar "${itemToMarkNaoArrematado?.title}" como NÃO ARREMATADA? A carta voltará automaticamente ao estoque com +1 unidade.`}
+        confirmText="Sim, devolver ao estoque"
+        cancelText="Cancelar"
+        variant="warning"
+        loading={confirmDialogLoading}
+      />
+
+      {/* Diálogo de Confirmação: Remover Item */}
+      <ConfirmDialog
+        isOpen={Boolean(itemToRemove)}
+        onClose={() => setItemToRemove(null)}
+        onConfirm={handleConfirmRemoveItem}
+        title="Remover Item do Leilão?"
+        message={`Remover "${itemToRemove?.title}" deste leilão?`}
+        confirmText="Sim, remover"
+        cancelText="Cancelar"
+        variant="danger"
+        loading={confirmDialogLoading}
+      />
+
+      {/* Diálogo de Confirmação: Marcar Todos Lotes como Não Arrematados */}
+      <ConfirmDialog
+        isOpen={isMarkAllUnsoldConfirmOpen}
+        onClose={() => setIsMarkAllUnsoldConfirmOpen(false)}
+        onConfirm={handleConfirmMarkAllUnsold}
+        title={`Marcar ${pendingLotsCount} lotes como Não Arrematados?`}
+        message={`Esta ação marcará todos os ${pendingLotsCount} lotes que ainda não foram arrematados como "NÃO ARREMATADO". Todas as cartas correspondentes serão devolvidas automaticamente ao estoque da loja (+1 un. cada).`}
+        confirmText={`Sim, marcar todos (${pendingLotsCount}) e devolver ao estoque`}
+        cancelText="Cancelar"
+        variant="warning"
+        loading={confirmDialogLoading}
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ import {
 import { formatCurrency, formatPhoneMask } from '../../utils/formatters';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useToast } from '../common/Toast';
 import { customerVaultService } from '../../services/customerVaultService';
 import { cardStockService } from '../../services/cardStockService';
@@ -81,15 +82,20 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [copiedShipmentId, setCopiedShipmentId] = useState<string | null>(null);
 
+  // Estados para diálogos de confirmação customizados (substituindo window.confirm)
+  const [stockItemToRemove, setStockItemToRemove] = useState<CustomerVaultStockItem | null>(null);
+  const [shipmentToToggle, setShipmentToToggle] = useState<{ id: string; nextStatus: ShipmentStatus; actionLabel: string } | null>(null);
+  const [confirmDialogLoading, setConfirmDialogLoading] = useState(false);
+
   const loadVaultData = async () => {
     if (!customer) return;
     try {
       setLoading(true);
       const [aucItems, stkVaultItems, stockVariants, clientShipments] = await Promise.all([
         customerVaultService.getCustomerVaultAuctionItems(customer.id),
-        Promise.resolve(customerVaultService.getCustomerVaultStockItems(customer.id)),
+        customerVaultService.getCustomerVaultStockItems(customer.id),
         cardStockService.getVariants(),
-        Promise.resolve(customerVaultService.getCustomerShipments(customer.id)),
+        customerVaultService.getCustomerShipments(customer.id),
       ]);
 
       setAuctionItems(aucItems);
@@ -208,29 +214,26 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
     }
   };
 
-  const handleRemoveStockItem = async (item: CustomerVaultStockItem) => {
-    if (!customer) return;
-    const qty = item.quantity || 1;
-    if (
-      !window.confirm(
-        `Remover "${item.name}" da gaveta? ${
-          qty > 1 ? `As ${qty} unidades serão estornadas` : 'A unidade será estornada'
-        } ao estoque.`
-      )
-    ) {
-      return;
-    }
+  const handleRequestRemoveStockItem = (item: CustomerVaultStockItem) => {
+    setStockItemToRemove(item);
+  };
 
+  const handleConfirmRemoveStockItem = async () => {
+    if (!customer || !stockItemToRemove) return;
     try {
-      await customerVaultService.removeStockItemFromVault(item.id, customer.name);
-      setStockItems((prev) => prev.filter((i) => i.id !== item.id));
-      success(`Item removido da gaveta e estornado ao estoque.`);
+      setConfirmDialogLoading(true);
+      await customerVaultService.removeStockItemFromVault(stockItemToRemove.id, customer.name);
+      setStockItems((prev) => prev.filter((i) => i.id !== stockItemToRemove.id));
+      success(`"${stockItemToRemove.name}" removido da gaveta e estornado ao estoque.`);
+      setStockItemToRemove(null);
       // Recarrega lista de variantes disponíveis
       const fresh = await cardStockService.getVariants();
       setAvailableStock(fresh.filter((v) => v.quantity > 0));
       if (onSuccess) onSuccess();
     } catch (err: any) {
       error(err.message || 'Erro ao remover item da gaveta.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
@@ -332,31 +335,39 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
     }
   };
 
-  const handleToggleShipmentStatus = async (
+  const handleRequestToggleShipmentStatus = (
     shipmentId: string,
     currentStatus: ShipmentStatus
   ) => {
     const nextStatus: ShipmentStatus = currentStatus === 'ENVIADO' ? 'RECEBIDO' : 'ENVIADO';
     const actionLabel =
       nextStatus === 'RECEBIDO'
-        ? 'Marcar este pacote como RECEBIDO/ENTREGUE? Isso atualizará o status de entrega de todas as cartas e produtos deste pacote.'
-        : 'Reabrir este pacote como EM TRÂNSITO?';
+        ? 'Deseja marcar este pacote como RECEBIDO/ENTREGUE? Isso atualizará a situação de entrega de todas as cartas e produtos deste pacote.'
+        : 'Deseja reabrir este pacote como EM TRÂNSITO?';
 
-    if (!window.confirm(actionLabel)) return;
+    setShipmentToToggle({ id: shipmentId, nextStatus, actionLabel });
+  };
 
+  const handleConfirmToggleShipmentStatus = async () => {
+    if (!shipmentToToggle) return;
     try {
-      await customerVaultService.updateShipmentStatus(shipmentId, nextStatus);
+      setConfirmDialogLoading(true);
+      await customerVaultService.updateShipmentStatus(shipmentToToggle.id, shipmentToToggle.nextStatus);
       success(
-        nextStatus === 'RECEBIDO'
+        shipmentToToggle.nextStatus === 'RECEBIDO'
           ? 'Pacote marcado como ENTREGUE/RECEBIDO com sucesso!'
           : 'Pacote reaberto como EM TRÂNSITO.'
       );
       if (customer) {
-        setShipments(customerVaultService.getCustomerShipments(customer.id));
+        const updated = await customerVaultService.getCustomerShipments(customer.id);
+        setShipments(updated);
       }
+      setShipmentToToggle(null);
       if (onSuccess) onSuccess();
     } catch (err: any) {
       error(err.message || 'Erro ao atualizar status do envio.');
+    } finally {
+      setConfirmDialogLoading(false);
     }
   };
 
@@ -390,12 +401,13 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
   const totalItemsCount = auctionItems.length + stockUnits;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Gaveta de Envio & Carrinho Consolidado — ${customer.name}`}
-      maxWidth="6xl"
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={`Gaveta de Envio & Carrinho Consolidado — ${customer.name}`}
+        maxWidth="6xl"
+      >
       <div className="space-y-5">
         {/* Card do Cliente & Informações de Contato / Envio */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 p-4 rounded-2xl bg-trigon-950 border border-trigon-800">
@@ -926,7 +938,7 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => handleRemoveStockItem(item)}
+                      onClick={() => handleRequestRemoveStockItem(item)}
                       title={`Remover e devolver ${item.quantity || 1} un. ao estoque`}
                       className="p-2 rounded-xl text-trigon-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
                     >
@@ -1144,7 +1156,7 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
                         type="button"
                         variant={isReceived ? 'ghost' : 'secondary'}
                         size="sm"
-                        onClick={() => handleToggleShipmentStatus(shp.id, shp.status)}
+                        onClick={() => handleRequestToggleShipmentStatus(shp.id, shp.status)}
                         className={
                           isReceived
                             ? 'text-trigon-400 hover:text-white'
@@ -1441,5 +1453,36 @@ export const CustomerVaultModal: React.FC<CustomerVaultModalProps> = ({
     </form>
   </Modal>
 </Modal>
+
+      {/* Diálogo de Confirmação: Remover Item da Gaveta */}
+      <ConfirmDialog
+        isOpen={Boolean(stockItemToRemove)}
+        onClose={() => setStockItemToRemove(null)}
+        onConfirm={handleConfirmRemoveStockItem}
+        title="Remover Item da Gaveta?"
+        message={`Deseja remover "${stockItemToRemove?.name}" da gaveta? ${
+          (stockItemToRemove?.quantity || 1) > 1
+            ? `As ${stockItemToRemove?.quantity} unidades serão estornadas`
+            : 'A unidade será estornada'
+        } ao estoque da loja.`}
+        confirmText="Sim, estornar ao estoque"
+        cancelText="Cancelar"
+        variant="warning"
+        loading={confirmDialogLoading}
+      />
+
+      {/* Diálogo de Confirmação: Alterar Situação do Envio */}
+      <ConfirmDialog
+        isOpen={Boolean(shipmentToToggle)}
+        onClose={() => setShipmentToToggle(null)}
+        onConfirm={handleConfirmToggleShipmentStatus}
+        title={shipmentToToggle?.nextStatus === 'RECEBIDO' ? 'Confirmar Recebimento do Pacote?' : 'Reabrir Pacote em Trânsito?'}
+        message={shipmentToToggle?.actionLabel || ''}
+        confirmText={shipmentToToggle?.nextStatus === 'RECEBIDO' ? 'Sim, Marcar como Recebido' : 'Sim, Reabrir'}
+        cancelText="Cancelar"
+        variant={shipmentToToggle?.nextStatus === 'RECEBIDO' ? 'primary' : 'warning'}
+        loading={confirmDialogLoading}
+      />
+    </>
   );
 };

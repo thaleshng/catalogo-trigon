@@ -19,6 +19,13 @@ import {
   Calendar,
   ArrowRight,
   Edit3,
+  Clock,
+  Sparkles,
+  Package,
+  CheckCircle2,
+  Coins,
+  Tag,
+  TrendingUp,
 } from 'lucide-react';
 
 interface AuctionListTabProps {
@@ -183,12 +190,19 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Barra de Ações do Topo */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-trigon-950 border border-trigon-800">
-        <div className="flex items-center gap-2">
-          <Gavel className="w-5 h-5 text-crimson-400" />
-          <span className="text-sm font-bold text-white uppercase tracking-wider">
-            Listagem de Leilões ({auctions.length})
-          </span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-trigon-900/90 border border-trigon-800 shadow-md">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-crimson-950/60 border border-crimson-500/30 text-crimson-400">
+            <Gavel className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-sm font-bold text-white uppercase tracking-wider block font-cinzel">
+              Listagem de Leilões
+            </span>
+            <span className="text-xs text-trigon-400">
+              {auctions.length} {auctions.length === 1 ? 'leilão registrado' : 'leilões registrados'}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2.5">
           <Button
@@ -220,7 +234,7 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
 
       {/* Lista de Cards de Leilões em Ordem Decrescente */}
       {auctions.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-trigon-950 border border-trigon-800 space-y-4">
+        <div className="p-12 text-center rounded-2xl bg-trigon-900/80 border border-trigon-800 space-y-4 shadow-lg">
           <div className="w-16 h-16 mx-auto rounded-2xl bg-crimson-950/60 border border-crimson-500/30 flex items-center justify-center text-crimson-400">
             <Gavel className="w-8 h-8" />
           </div>
@@ -244,63 +258,98 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
           {paginatedAuctions.map((auc) => {
             const isEmAndamento = auc.status === 'EM_ANDAMENTO';
             const isFinalizado = auc.status === 'FINALIZADO';
+            const hasLotes = (auc.itemsCount || 0) > 0;
+            const arrematadasPct =
+              hasLotes && (auc.arrematadosCount || 0) > 0
+                ? Math.round(((auc.arrematadosCount || 0) / (auc.itemsCount || 1)) * 100)
+                : null;
 
             return (
               <div
                 key={auc.id}
-                className={`p-5 rounded-2xl border transition-all ${
+                className={`p-5 rounded-2xl border transition-all duration-200 ${
                   isEmAndamento
-                    ? 'bg-gradient-to-br from-trigon-950 via-trigon-900 to-emerald-950/30 border-emerald-500/40 shadow-glow-emerald'
-                    : 'bg-trigon-950 border-trigon-800 hover:border-trigon-700'
+                    ? 'bg-gradient-to-r from-emerald-950/25 via-trigon-900 to-trigon-900 border-l-4 border-l-emerald-500 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
+                    : isFinalizado
+                      ? 'bg-trigon-900/95 border-l-4 border-l-trigon-700 border-trigon-800 hover:border-trigon-700 shadow-md shadow-black/40'
+                      : 'bg-gradient-to-r from-amber-950/20 via-trigon-900 to-trigon-900 border-l-4 border-l-amber-500 border-amber-500/30 hover:border-amber-500/50 shadow-md shadow-black/40'
                 }`}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   {/* Identificação e Cabeçalho do Leilão */}
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3.5">
+                    {/* Ícone contextual moderno sem duplicar o título */}
                     <div
-                      className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center shrink-0 border ${
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-md transition-all ${
                         isEmAndamento
-                          ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-400'
+                          ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-400 shadow-emerald-950/50'
                           : isFinalizado
-                            ? 'bg-trigon-900 border-trigon-750 text-trigon-300'
-                            : 'bg-amber-950/90 border-amber-500/50 text-amber-400'
+                            ? 'bg-trigon-800/90 border-trigon-700 text-trigon-300'
+                            : 'bg-amber-950/80 border-amber-500/50 text-amber-300 shadow-amber-950/40'
                       }`}
                     >
-                      <span className="text-[9px] uppercase font-bold tracking-widest text-trigon-400">
-                        LEILÃO
-                      </span>
-                      <span className="font-cinzel text-xl font-extrabold leading-none mt-0.5">
-                        #{auc.code}
-                      </span>
+                      {isEmAndamento ? (
+                        <Gavel className="w-5 h-5 animate-pulse" />
+                      ) : isFinalizado ? (
+                        <Gavel className="w-5 h-5 text-trigon-300" />
+                      ) : (
+                        <Sparkles className="w-5 h-5 text-amber-300" />
+                      )}
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2.5 flex-wrap">
-                        <h4 className="font-cinzel text-base font-bold text-white">
-                          {auc.title || `Leilão #${auc.code}`}
-                        </h4>
+                        {/* Tag com o Código do Leilão */}
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          className={`font-mono text-xs font-black px-2.5 py-0.5 rounded-lg border tracking-wider shadow-sm ${
                             isEmAndamento
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
                               : isFinalizado
-                                ? 'bg-trigon-900 text-trigon-300 border border-trigon-750'
-                                : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                                ? 'bg-trigon-800 text-trigon-200 border-trigon-700'
+                                : 'bg-amber-950/90 text-amber-300 border-amber-500/40'
                           }`}
                         >
+                          #{auc.code}
+                        </span>
+
+                        {/* Título Principal */}
+                        <h4 className="font-cinzel text-base sm:text-lg font-bold text-white tracking-wide">
+                          {auc.title || `Leilão #${auc.code}`}
+                        </h4>
+
+                        {/* Badge de Status */}
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            isEmAndamento
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
+                              : isFinalizado
+                                ? 'bg-trigon-800/80 text-trigon-300 border border-trigon-700'
+                                : 'bg-amber-500/15 text-amber-300 border border-amber-500/40'
+                          }`}
+                        >
+                          {isEmAndamento && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                          )}
                           {isEmAndamento
-                            ? '● EM ANDAMENTO (24H)'
+                            ? 'Em Andamento (24h)'
                             : isFinalizado
-                              ? 'FINALIZADO'
-                              : 'PRÉ-LEILÃO (EM MONTAGEM)'}
+                              ? 'Finalizado'
+                              : 'Pré-Leilão (Em Montagem)'}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-trigon-400 flex-wrap">
+                      {/* Subtítulo: Período e Prazos */}
+                      <div className="flex items-center gap-3.5 text-xs text-trigon-400 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 font-mono text-trigon-300">
                           <Calendar className="w-3.5 h-3.5 text-crimson-400" />
                           <span>{formatAuctionPeriod(auc.startDate, auc.endDate)}</span>
                         </span>
+                        {auc.paymentDeadlineHours ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-trigon-400 bg-trigon-950/60 px-2 py-0.5 rounded-md border border-trigon-800">
+                            <Clock className="w-3 h-3 text-trigon-500" />
+                            Cobrança em {auc.paymentDeadlineHours}h
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -311,7 +360,7 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
                       type="button"
                       onClick={() => handleOpenEditAuction(auc)}
                       title="Editar informações do leilão (título, datas, prazos)"
-                      className="p-2.5 rounded-xl bg-trigon-900 hover:bg-trigon-800 border border-trigon-750 text-trigon-300 hover:text-white transition-all shrink-0"
+                      className="p-2.5 rounded-xl bg-trigon-800 hover:bg-trigon-750 border border-trigon-700 text-trigon-300 hover:text-white transition-all shadow-sm shrink-0"
                     >
                       <Edit3 className="w-4 h-4 text-crimson-400" />
                     </button>
@@ -321,8 +370,10 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
                       onClick={() => onSelectAuction(auc.id)}
                       className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
                         isEmAndamento
-                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white hover:shadow-glow-emerald'
-                          : 'bg-trigon-900 hover:bg-crimson-900/40 border border-trigon-700 hover:border-crimson-500/60 text-white'
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
+                          : isFinalizado
+                            ? 'bg-trigon-800 hover:bg-trigon-750 border border-trigon-700 text-white'
+                            : 'bg-gradient-to-r from-crimson-700 to-crimson-600 hover:from-crimson-600 hover:to-crimson-500 text-white shadow-crimson-950/40'
                       }`}
                     >
                       <span>Gerenciar Lotes & Fechamento</span>
@@ -331,60 +382,106 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
                   </div>
                 </div>
 
-                {/* Métricas Consolidadas do Leilão */}
-                <div className="mt-4 pt-4 border-t border-trigon-850 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
-                      Total de Lotes
+                {/* Métricas Consolidadas do Leilão - Boxes Sólidos e Informativos */}
+                <div className="mt-4 pt-4 border-t border-trigon-800/80 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                  {/* 1. Lotes */}
+                  <div className="p-3 rounded-xl bg-trigon-950/80 border border-trigon-800 hover:border-trigon-750 transition-colors flex flex-col justify-between">
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <Package className="w-3 h-3 text-trigon-400" />
+                      Total Lotes
                     </span>
-                    <span className="font-mono text-sm font-bold text-white block mt-0.5">
-                      {auc.itemsCount || 0} cartas
-                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="font-mono text-sm font-bold text-white">
+                        {auc.itemsCount || 0}
+                      </span>
+                      <span className="text-[10px] text-trigon-500">
+                        {auc.itemsCount === 1 ? 'carta' : 'cartas'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
+                  {/* 2. Arrematadas */}
+                  <div className="p-3 rounded-xl bg-trigon-950/80 border border-trigon-800 hover:border-trigon-750 transition-colors flex flex-col justify-between">
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                       Arrematadas
                     </span>
-                    <span className="font-mono text-sm font-bold text-emerald-400 block mt-0.5">
-                      {auc.arrematadosCount || 0} un.
-                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="font-mono text-sm font-bold text-emerald-400">
+                        {auc.arrematadosCount || 0} un.
+                      </span>
+                      {arrematadasPct !== null ? (
+                        <span className="text-[10px] font-mono font-semibold text-emerald-400/80">
+                          {arrematadasPct}%
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
-                      Total Arrematado
+                  {/* 3. Total Arrematado */}
+                  <div className="p-3 rounded-xl bg-trigon-950/80 border border-trigon-800 hover:border-trigon-750 transition-colors flex flex-col justify-between">
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <Coins className="w-3 h-3 text-emerald-400" />
+                      Total Vendido
                     </span>
-                    <span className="font-mono text-sm font-bold text-emerald-400 block mt-0.5">
+                    <span className="font-mono text-sm font-bold text-emerald-300 block mt-1 truncate">
                       {formatCurrency(auc.totalArrematado || 0)}
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
+                  {/* 4. Valor Pendente */}
+                  <div
+                    className={`p-3 rounded-xl border transition-colors flex flex-col justify-between ${
+                      (auc.totalPendente || 0) > 0
+                        ? 'bg-amber-950/20 border-amber-500/30'
+                        : 'bg-trigon-950/80 border-trigon-800'
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <Clock className="w-3 h-3 text-amber-400" />
                       Valor Pendente
                     </span>
-                    <span className="font-mono text-sm font-bold text-amber-300 block mt-0.5">
+                    <span
+                      className={`font-mono text-sm font-bold block mt-1 truncate ${
+                        (auc.totalPendente || 0) > 0 ? 'text-amber-300' : 'text-trigon-400'
+                      }`}
+                    >
                       {formatCurrency(auc.totalPendente || 0)}
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
+                  {/* 5. Custo Lotes */}
+                  <div className="p-3 rounded-xl bg-trigon-950/80 border border-trigon-800 hover:border-trigon-750 transition-colors flex flex-col justify-between">
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <Tag className="w-3 h-3 text-trigon-400" />
                       Custo Lotes
                     </span>
-                    <span className="font-mono text-sm font-bold text-trigon-300 block mt-0.5">
+                    <span className="font-mono text-sm font-bold text-trigon-300 block mt-1 truncate">
                       {formatCurrency(auc.totalCusto || 0)}
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-trigon-900/60 border border-trigon-800">
-                    <span className="text-[10px] uppercase text-trigon-400 font-semibold block">
+                  {/* 6. Lucro Líquido */}
+                  <div
+                    className={`p-3 rounded-xl border transition-colors flex flex-col justify-between ${
+                      (auc.totalLucro || 0) > 0
+                        ? 'bg-emerald-950/20 border-emerald-500/25'
+                        : (auc.totalLucro || 0) < 0
+                          ? 'bg-crimson-950/20 border-crimson-500/25'
+                          : 'bg-trigon-950/80 border-trigon-800'
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase text-trigon-400 font-semibold flex items-center gap-1.5">
+                      <TrendingUp className="w-3 h-3 text-emerald-400" />
                       Lucro Líquido
                     </span>
                     <span
-                      className={`font-mono text-sm font-bold block mt-0.5 ${
-                        (auc.totalLucro || 0) >= 0 ? 'text-emerald-400' : 'text-crimson-400'
+                      className={`font-mono text-sm font-bold block mt-1 truncate ${
+                        (auc.totalLucro || 0) > 0
+                          ? 'text-emerald-400'
+                          : (auc.totalLucro || 0) < 0
+                            ? 'text-crimson-400'
+                            : 'text-trigon-400'
                       }`}
                     >
                       {formatCurrency(auc.totalLucro || 0)}
@@ -408,7 +505,7 @@ export const AuctionListTab: React.FC<AuctionListTabProps> = ({
               }}
               itemsPerPageOptions={[3, 5, 10, 20]}
               itemLabel="leilão(ões)"
-              className="rounded-2xl border border-trigon-800"
+              className="rounded-2xl border border-trigon-800 bg-trigon-900/90 shadow-md p-3"
             />
           )}
         </div>

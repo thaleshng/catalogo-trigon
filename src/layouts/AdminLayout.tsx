@@ -22,6 +22,7 @@ import {
   Sparkles,
   FolderKanban,
   Gavel,
+  ShoppingCart,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
@@ -71,6 +72,12 @@ export const AdminLayout: React.FC = () => {
       end: false,
       label: 'Controle de Estoque',
       icon: <ArrowLeftRight className="w-5 h-5" />,
+    },
+    {
+      to: '/admin/vendas',
+      end: false,
+      label: 'Histórico de Vendas',
+      icon: <ShoppingCart className="w-5 h-5" />,
     },
     {
       to: '/admin/cartas',

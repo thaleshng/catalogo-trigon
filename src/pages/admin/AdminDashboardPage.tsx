@@ -177,36 +177,44 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
 
         {/* Total Sales Count */}
-        <div className="p-5 rounded-2xl bg-trigon-900 border border-trigon-800 shadow-md flex items-center justify-between">
+        <Link
+          to="/admin/vendas"
+          className="p-5 rounded-2xl bg-trigon-900 border border-trigon-800 hover:border-amber-500/50 transition-colors shadow-md flex items-center justify-between group cursor-pointer"
+        >
           <div>
-            <p className="text-[11px] uppercase font-semibold text-amber-400 tracking-wider">
-              Itens Vendidos
+            <p className="text-[11px] uppercase font-semibold text-amber-400 tracking-wider flex items-center gap-1">
+              <span>Itens Vendidos</span>
+              <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
             </p>
             <p className="text-2xl font-extrabold text-amber-400 mt-1">
               {stats.totalSalesCount} un.
             </p>
-            <p className="text-[11px] text-trigon-500 mt-0.5">Vendas lançadas</p>
+            <p className="text-[11px] text-trigon-500 mt-0.5">Ver relatório de vendas →</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-950/60 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-xl bg-amber-950/60 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
             <ShoppingCart className="w-5 h-5" />
           </div>
-        </div>
+        </Link>
 
         {/* Total Sales Revenue */}
-        <div className="p-5 rounded-2xl bg-trigon-900 border border-trigon-800 shadow-md flex items-center justify-between">
+        <Link
+          to="/admin/vendas"
+          className="p-5 rounded-2xl bg-trigon-900 border border-trigon-800 hover:border-emerald-500/50 transition-colors shadow-md flex items-center justify-between group cursor-pointer"
+        >
           <div>
-            <p className="text-[11px] uppercase font-semibold text-emerald-400 tracking-wider">
-              Faturamento
+            <p className="text-[11px] uppercase font-semibold text-emerald-400 tracking-wider flex items-center gap-1">
+              <span>Faturamento</span>
+              <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
             </p>
             <p className="text-2xl font-extrabold text-white mt-1">
               {formatCurrency(stats.totalRevenue)}
             </p>
-            <p className="text-[11px] text-emerald-500 mt-0.5">Receita de vendas</p>
+            <p className="text-[11px] text-emerald-500 mt-0.5">Ver histórico detalhado →</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <div className="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
             <DollarSign className="w-5 h-5" />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Total Valuation Banner */}
@@ -243,12 +251,22 @@ export const AdminDashboardPage: React.FC = () => {
               <ArrowLeftRight className="w-4 h-4 text-crimson-400" />
               <span>Últimas Movimentações de Estoque</span>
             </h3>
-            <Link
-              to="/admin/estoque"
-              className="text-xs text-crimson-400 hover:underline"
-            >
-              Ver Todas
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/admin/vendas"
+                className="text-xs text-amber-400 hover:text-amber-300 font-medium inline-flex items-center gap-1"
+              >
+                <span>Vendas</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+              <span className="text-trigon-700">•</span>
+              <Link
+                to="/admin/estoque"
+                className="text-xs text-crimson-400 hover:text-crimson-300"
+              >
+                Ver Todas
+              </Link>
+            </div>
           </div>
 
           {recentMovements.length === 0 ? (

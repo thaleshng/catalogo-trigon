@@ -671,36 +671,11 @@ Agradecemos pela atenção e por participar dos leilões da *TRIGON*! 🔺`;
       );
     }
 
-    // 1. Estorna estoque de itens que não foram arrematados
-    for (const item of detail.items) {
-      if (item.status === 'NAO_ARREMATADO') {
-        const variantIdsToRestock: { id: string; cost?: number | null }[] = [];
-        if (item.isBundle && item.bundleCards && item.bundleCards.length > 0) {
-          for (const bc of item.bundleCards) {
-            variantIdsToRestock.push({ id: bc.variantId, cost: bc.costPrice });
-          }
-        } else if (item.bundleVariantIds && item.bundleVariantIds.length > 0) {
-          for (const id of item.bundleVariantIds) {
-            variantIdsToRestock.push({ id, cost: item.costPrice });
-          }
-        } else if (item.cardVariantId) {
-          variantIdsToRestock.push({ id: item.cardVariantId, cost: item.costPrice });
-        }
-
-        for (const target of variantIdsToRestock) {
-          try {
-            await cardStockService.recordMovement({
-              variantId: target.id,
-              type: 'ENTRADA',
-              quantity: 1,
-              unitCost: target.cost || null,
-              reason: `Devolução de lote não arrematado — Leilão #${detail.auction.code}`,
-            });
-          } catch (err) {
-            console.warn(`[auctionService] Falha ao devolver estoque do item ${item.id}:`, err);
-          }
-        }
-      }
+    // 1. Estorna estoque de itens que ainda estavam pendentes (EM_LEILAO)
+    try {
+      await this.markAllUnsoldAsNaoArrematado(auctionId);
+    } catch (err) {
+      console.warn('[auctionService] Falha ao devolver estoque dos lotes não arrematados:', err);
     }
 
     const { data, error } = await supabase
@@ -1410,6 +1385,91 @@ Agradecemos pela atenção e por participar dos leilões da *TRIGON*! 🔺`;
 
     if (error) throw new Error(error.message || 'Erro ao marcar item como não arrematado.');
     return mapAuctionItemRow(data);
+  },
+
+  /**
+   * Marca em lote todos os itens pendentes ('EM_LEILAO') como NÃO ARREMATADO
+   * e estorna automaticamente as cartas ao estoque da loja
+   */
+  async markAllUnsoldAsNaoArrematado(auctionId: string): Promise<{ count: number }> {
+    const detail = await this.getAuctionById(auctionId);
+    if (!detail) throw new Error('Leilão não encontrado.');
+
+    if (detail.auction.status === 'PRE_LEILAO') {
+      throw new Error('Não é possível marcar como Não Saiu antes do início do leilão.');
+    }
+
+    const pendingItems = detail.items.filter((i) => i.status === 'EM_LEILAO');
+    if (pendingItems.length === 0) {
+      return { count: 0 };
+    }
+
+    // 1. Devolve as cartas dos lotes pendentes ao estoque
+    for (const item of pendingItems) {
+      const variantIdsToRestock: { id: string; cost?: number | null }[] = [];
+      if (item.isBundle && item.bundleCards && item.bundleCards.length > 0) {
+        for (const bc of item.bundleCards) {
+          variantIdsToRestock.push({ id: bc.variantId, cost: bc.costPrice });
+        }
+      } else if (item.bundleVariantIds && item.bundleVariantIds.length > 0) {
+        for (const id of item.bundleVariantIds) {
+          variantIdsToRestock.push({ id, cost: item.costPrice });
+        }
+      } else if (item.cardVariantId) {
+        variantIdsToRestock.push({ id: item.cardVariantId, cost: item.costPrice });
+      }
+
+      for (const target of variantIdsToRestock) {
+        try {
+          await cardStockService.recordMovement({
+            variantId: target.id,
+            type: 'ENTRADA',
+            quantity: 1,
+            unitCost: target.cost || null,
+            reason: `Devolução em massa de lote não arrematado — Leilão #${detail.auction.code}`,
+          });
+        } catch (err) {
+          console.warn(`[auctionService] Falha ao estornar estoque do item ${item.id}:`, err);
+        }
+      }
+    }
+
+    // 2. Atualiza todos os itens pendentes para NAO_ARREMATADO no Supabase
+    const itemIds = pendingItems.map((i) => i.id);
+    const nowIso = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('tcg_auction_items')
+      .update({
+        status: 'NAO_ARREMATADO',
+        winning_customer_id: null,
+        final_price: null,
+        updated_at: nowIso,
+      })
+      .in('id', itemIds);
+
+    // Fallback local
+    const local = readLocal<TcgAuctionItem[]>(LOCAL_STORAGE_KEYS.AUCTION_ITEMS, []);
+    const idSet = new Set(itemIds);
+    let changedLocal = false;
+    for (const item of local) {
+      if (idSet.has(item.id)) {
+        item.status = 'NAO_ARREMATADO';
+        item.winningCustomerId = null;
+        item.finalPrice = null;
+        item.updatedAt = nowIso;
+        changedLocal = true;
+      }
+    }
+    if (changedLocal) {
+      writeLocal(LOCAL_STORAGE_KEYS.AUCTION_ITEMS, local);
+    }
+
+    if (error && !isMissingTableError(error)) {
+      throw new Error(error.message || 'Erro ao atualizar lotes não arrematados.');
+    }
+
+    return { count: pendingItems.length };
   },
 
   /**

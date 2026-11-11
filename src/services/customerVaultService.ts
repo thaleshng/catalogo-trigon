@@ -24,6 +24,48 @@ const LOCAL_STORAGE_AUCTION_ITEMS = 'trigon_tcg_auction_items';
 const LOCAL_STORAGE_AUCTIONS = 'trigon_tcg_auctions';
 const LOCAL_STORAGE_SHIPMENTS = 'trigon_customer_shipments_v1';
 
+// Vendas históricas registradas em stock_movements para recuperação automática imediata
+const HISTORICAL_RECOVERED_VAULT_ITEMS: CustomerVaultStockItem[] = [
+  {
+    id: 'rec_diego_blister_delta_2',
+    customerId: '68474096-170b-4c22-a6ad-a57331be56f4', // Diego Antônio
+    productId: '4df1cc6b-e346-4038-8dba-ad9c71b2d952',
+    name: 'Blister Triplo - Reinado Delta',
+    subtitle: '2x un. • Produto do Catálogo',
+    condition: 'Mint / Fresh Pack',
+    language: 'Português',
+    finish: null,
+    imageUrl:
+      'https://yhwussobckwfpxujkizp.supabase.co/storage/v1/object/public/trigon-catalog-images/products/1794012529705-wweltc9.webp',
+    unitPrice: 32.5,
+    costPrice: 0,
+    quantity: 2,
+    paymentStatus: 'PAGO',
+    shippingStatus: 'NAO_SOLICITADO',
+    notes: 'Venda via WhatsApp (Recuperada automaticamente)',
+    createdAt: '2026-11-07T00:50:09.893Z',
+  },
+  {
+    id: 'rec_thalisson_blister_delta_1',
+    customerId: 'ea6e0b45-4f49-49bd-b761-c0a3a695f6bc', // Thalisson Oliveira
+    productId: '4df1cc6b-e346-4038-8dba-ad9c71b2d952',
+    name: 'Blister Triplo - Reinado Delta',
+    subtitle: 'Produto do Catálogo',
+    condition: 'Mint / Fresh Pack',
+    language: 'Português',
+    finish: null,
+    imageUrl:
+      'https://yhwussobckwfpxujkizp.supabase.co/storage/v1/object/public/trigon-catalog-images/products/1794012529705-wweltc9.webp',
+    unitPrice: 32.5,
+    costPrice: 0,
+    quantity: 1,
+    paymentStatus: 'PAGO',
+    shippingStatus: 'NAO_SOLICITADO',
+    notes: 'Venda via WhatsApp (Recuperada automaticamente)',
+    createdAt: '2026-11-07T00:57:36.616Z',
+  },
+];
+
 function isMissingTableError(error: any): boolean {
   if (!error) return false;
   const msg = String(error.message || '').toLowerCase();
@@ -52,6 +94,80 @@ function writeLocal<T>(key: string, value: T): void {
     console.warn(`[customerVaultService] Falha ao persistir em ${key}:`, err);
   }
 }
+
+/**
+ * Garante que os registros históricos estejam presentes no fallback local
+ */
+function ensureLocalSeed() {
+  const current = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
+  let changed = false;
+  for (const item of HISTORICAL_RECOVERED_VAULT_ITEMS) {
+    const exists = current.some(
+      (c) =>
+        c.customerId === item.customerId &&
+        c.productId === item.productId &&
+        c.shippingStatus !== 'ENVIADO' &&
+        c.shippingStatus !== 'RECEBIDO'
+    );
+    if (!exists) {
+      current.push(item);
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeLocal(LOCAL_STORAGE_VAULT_STOCK, current);
+  }
+}
+
+function mapVaultStockRow(row: any): CustomerVaultStockItem {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    variantId: row.variant_id || undefined,
+    productId: row.product_id || undefined,
+    name: row.name,
+    subtitle: row.subtitle || undefined,
+    condition: row.condition || null,
+    language: row.language || null,
+    finish: row.finish || null,
+    imageUrl: row.image_url || null,
+    unitPrice: Number(row.unit_price) || 0,
+    costPrice: Number(row.cost_price) || 0,
+    quantity: Number(row.quantity) || 1,
+    paymentStatus: row.payment_status || 'PAGO',
+    shippingStatus: row.shipping_status || 'NAO_SOLICITADO',
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapShipmentRow(row: any): CustomerShipmentPackage {
+  return {
+    id: row.id,
+    shipmentCode: row.shipment_code,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone || undefined,
+    customerAddress: row.customer_address || undefined,
+    trackingCode: row.tracking_code || undefined,
+    carrier: (row.carrier as ShipmentCarrier) || 'CORREIOS_MINI',
+    customCarrierName: row.custom_carrier_name || undefined,
+    shippingCost: row.shipping_cost ? Number(row.shipping_cost) : undefined,
+    status: (row.status as ShipmentStatus) || 'ENVIADO',
+    totalItemsCount: Number(row.total_items_count) || 0,
+    totalValue: Number(row.total_value) || 0,
+    isQuestClosure: Boolean(row.is_quest_closure),
+    items: Array.isArray(row.items) ? row.items : [],
+    notes: row.notes || undefined,
+    dispatchedAt: row.dispatched_at,
+    deliveredAt: row.delivered_at || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Inicializa seed de recuperação local
+ensureLocalSeed();
 
 export const customerVaultService = {
   /**
@@ -140,8 +256,32 @@ export const customerVaultService = {
 
   /**
    * Busca itens adicionados diretamente do estoque da loja para a gaveta do cliente
+   * Tenta primeiro no Supabase; se tabela não existir, usa fallback local.
    */
-  getCustomerVaultStockItems(customerId: string): CustomerVaultStockItem[] {
+  async getCustomerVaultStockItems(customerId: string): Promise<CustomerVaultStockItem[]> {
+    ensureLocalSeed();
+
+    try {
+      const { data, error } = await supabase
+        .from('customer_vault_stock_items')
+        .select('*')
+        .eq('customer_id', customerId)
+        .eq('payment_status', 'PAGO')
+        .in('shipping_status', ['NAO_SOLICITADO', 'SOLICITADO'])
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        return data.map(mapVaultStockRow);
+      }
+
+      if (error && !isMissingTableError(error)) {
+        console.warn('[customerVaultService] Erro ao buscar itens de estoque na gaveta:', error);
+      }
+    } catch (err) {
+      console.warn('[customerVaultService] Falha de conexão com Supabase:', err);
+    }
+
+    // Fallback Local
     const all = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
     return all.filter(
       (i) =>
@@ -183,24 +323,59 @@ export const customerVaultService = {
     const setInfo = params.variant.card?.setName ? cleanSetName(params.variant.card.setName) : '';
     const subtitle = [setInfo, num].filter(Boolean).join(' • ');
 
-    const newItem: CustomerVaultStockItem = {
-      id: `vlt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      customerId: params.customerId,
-      variantId: params.variant.id,
+    const payload = {
+      customer_id: params.customerId,
+      variant_id: params.variant.id,
+      product_id: null,
       name: cardName,
       subtitle: subtitle || undefined,
       condition: params.variant.condition || null,
       language: params.variant.language || null,
       finish: params.variant.finish || null,
-      imageUrl: params.variant.card?.imageUrl || null,
-      unitPrice: Math.max(0, params.unitPrice),
-      costPrice: params.variant.acquisitionCost || 0,
+      image_url: params.variant.card?.imageUrl || null,
+      unit_price: Math.max(0, params.unitPrice),
+      cost_price: params.variant.acquisitionCost || 0,
       quantity: 1,
-      paymentStatus: 'PAGO',
-      shippingStatus: 'NAO_SOLICITADO',
-      notes: params.notes?.trim() || undefined,
-      createdAt: new Date().toISOString(),
+      payment_status: 'PAGO',
+      shipping_status: 'NAO_SOLICITADO',
+      notes: params.notes?.trim() || null,
     };
+
+    let newItem: CustomerVaultStockItem;
+
+    try {
+      const { data, error } = await supabase
+        .from('customer_vault_stock_items')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (!error && data) {
+        newItem = mapVaultStockRow(data);
+      } else {
+        throw error || new Error('Erro ao inserir item na gaveta');
+      }
+    } catch (err) {
+      // Fallback local
+      newItem = {
+        id: `vlt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        customerId: params.customerId,
+        variantId: params.variant.id,
+        name: cardName,
+        subtitle: subtitle || undefined,
+        condition: params.variant.condition || null,
+        language: params.variant.language || null,
+        finish: params.variant.finish || null,
+        imageUrl: params.variant.card?.imageUrl || null,
+        unitPrice: Math.max(0, params.unitPrice),
+        costPrice: params.variant.acquisitionCost || 0,
+        quantity: 1,
+        paymentStatus: 'PAGO',
+        shippingStatus: 'NAO_SOLICITADO',
+        notes: params.notes?.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+    }
 
     const all = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
     all.unshift(newItem);
@@ -222,24 +397,61 @@ export const customerVaultService = {
     notes?: string;
   }): Promise<CustomerVaultStockItem> {
     const qty = Math.max(1, params.quantity);
-    const newItem: CustomerVaultStockItem = {
-      id: `vlt_prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      customerId: params.customerId,
-      productId: params.product.id,
+    const subtitle = qty > 1 ? `${qty}x un. • Produto do Catálogo` : 'Produto do Catálogo';
+
+    const payload = {
+      customer_id: params.customerId,
+      product_id: params.product.id,
+      variant_id: null,
       name: params.product.name,
-      subtitle: qty > 1 ? `${qty}x un. • Produto do Catálogo` : 'Produto do Catálogo',
+      subtitle,
       condition: params.product.condition || null,
       language: params.product.language || null,
       finish: null,
-      imageUrl: params.product.images?.[0] || null,
-      unitPrice: Math.max(0, params.unitPrice),
-      costPrice: 0,
+      image_url: params.product.images?.[0] || null,
+      unit_price: Math.max(0, params.unitPrice),
+      cost_price: 0,
       quantity: qty,
-      paymentStatus: 'PAGO',
-      shippingStatus: 'NAO_SOLICITADO',
-      notes: params.notes?.trim() || undefined,
-      createdAt: new Date().toISOString(),
+      payment_status: 'PAGO',
+      shipping_status: 'NAO_SOLICITADO',
+      notes: params.notes?.trim() || null,
     };
+
+    let newItem: CustomerVaultStockItem;
+
+    try {
+      const { data, error } = await supabase
+        .from('customer_vault_stock_items')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (!error && data) {
+        newItem = mapVaultStockRow(data);
+      } else {
+        throw error || new Error('Erro ao inserir produto na gaveta');
+      }
+    } catch (err) {
+      // Fallback local
+      newItem = {
+        id: `vlt_prod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        customerId: params.customerId,
+        productId: params.product.id,
+        name: params.product.name,
+        subtitle,
+        condition: params.product.condition || null,
+        language: params.product.language || null,
+        finish: null,
+        imageUrl: params.product.images?.[0] || null,
+        unitPrice: Math.max(0, params.unitPrice),
+        costPrice: 0,
+        quantity: qty,
+        paymentStatus: 'PAGO',
+        shippingStatus: 'NAO_SOLICITADO',
+        notes: params.notes?.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+    }
 
     const all = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
     all.unshift(newItem);
@@ -257,26 +469,47 @@ export const customerVaultService = {
   ): Promise<void> {
     const all = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
     const item = all.find((i) => i.id === vaultItemId);
-    if (!item) return;
 
-    const qtyToReturn = item.quantity || 1;
+    let variantId = item?.variantId;
+    let productId = item?.productId;
+    let qtyToReturn = item?.quantity || 1;
+    let costPrice = item?.costPrice;
 
-    if (item.variantId) {
+    // Se não encontrou no local, busca no Supabase
+    if (!item) {
+      try {
+        const { data } = await supabase
+          .from('customer_vault_stock_items')
+          .select('*')
+          .eq('id', vaultItemId)
+          .maybeSingle();
+        if (data) {
+          variantId = data.variant_id;
+          productId = data.product_id;
+          qtyToReturn = data.quantity || 1;
+          costPrice = data.cost_price;
+        }
+      } catch (err) {
+        console.warn('[customerVaultService] Falha ao buscar item para remoção:', err);
+      }
+    }
+
+    if (variantId) {
       try {
         await cardStockService.recordMovement({
-          variantId: item.variantId,
+          variantId,
           type: 'ENTRADA',
           quantity: qtyToReturn,
-          unitCost: item.costPrice || null,
+          unitCost: costPrice || null,
           reason: `Cancelamento de item da Gaveta de Envio — ${customerName}`,
         });
       } catch (err) {
         console.warn('[customerVaultService] Falha ao estornar carta ao estoque:', err);
       }
-    } else if (item.productId) {
+    } else if (productId) {
       try {
         await stockService.recordMovement(
-          item.productId,
+          productId,
           'ENTRADA',
           qtyToReturn,
           `Cancelamento de item da Gaveta de Envio — ${customerName}`
@@ -286,6 +519,14 @@ export const customerVaultService = {
       }
     }
 
+    // Deleta no Supabase
+    try {
+      await supabase.from('customer_vault_stock_items').delete().eq('id', vaultItemId);
+    } catch (err) {
+      console.warn('[customerVaultService] Falha ao deletar item no banco:', err);
+    }
+
+    // Deleta no local
     const updated = all.filter((i) => i.id !== vaultItemId);
     writeLocal(LOCAL_STORAGE_VAULT_STOCK, updated);
   },
@@ -299,6 +540,18 @@ export const customerVaultService = {
     newStatus: AuctionShippingStatus
   ): Promise<void> {
     if (isStockItem) {
+      try {
+        await supabase
+          .from('customer_vault_stock_items')
+          .update({
+            shipping_status: newStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', itemId);
+      } catch (err) {
+        console.warn('[customerVaultService] Falha ao atualizar shipping_status no Supabase:', err);
+      }
+
       const all = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
       const found = all.find((i) => i.id === itemId);
       if (found) {
@@ -361,7 +614,21 @@ export const customerVaultService = {
   /**
    * Retorna todo o histórico de envios (pacotes despachados) de um cliente
    */
-  getCustomerShipments(customerId: string): CustomerShipmentPackage[] {
+  async getCustomerShipments(customerId: string): Promise<CustomerShipmentPackage[]> {
+    try {
+      const { data, error } = await supabase
+        .from('customer_shipments')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('dispatched_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        return data.map(mapShipmentRow);
+      }
+    } catch (err) {
+      console.warn('[customerVaultService] Falha ao buscar envios no banco:', err);
+    }
+
     const all = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
     return all
       .filter((s) => s.customerId === customerId)
@@ -371,7 +638,20 @@ export const customerVaultService = {
   /**
    * Retorna todo o histórico de envios do sistema
    */
-  getAllShipments(): CustomerShipmentPackage[] {
+  async getAllShipments(): Promise<CustomerShipmentPackage[]> {
+    try {
+      const { data, error } = await supabase
+        .from('customer_shipments')
+        .select('*')
+        .order('dispatched_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        return data.map(mapShipmentRow);
+      }
+    } catch (err) {
+      console.warn('[customerVaultService] Falha ao buscar todos os envios no banco:', err);
+    }
+
     const all = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
     return all.sort((a, b) => new Date(b.dispatchedAt).getTime() - new Date(a.dispatchedAt).getTime());
   },
@@ -407,14 +687,29 @@ export const customerVaultService = {
     }
 
     // 2. Marca itens de estoque da gaveta como ENVIADO
-    const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
-    const stockIds = new Set(params.stockItems.map((s) => s.id));
-    for (const s of allStock) {
-      if (stockIds.has(s.id)) {
-        s.shippingStatus = 'ENVIADO';
+    const stockIds = params.stockItems.map((s) => s.id);
+    if (stockIds.length > 0) {
+      try {
+        await supabase
+          .from('customer_vault_stock_items')
+          .update({
+            shipping_status: 'ENVIADO',
+            updated_at: nowIso,
+          })
+          .in('id', stockIds);
+      } catch (err) {
+        console.warn('[customerVaultService] Falha ao marcar itens de estoque como ENVIADO no banco:', err);
       }
+
+      const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
+      const setIds = new Set(stockIds);
+      for (const s of allStock) {
+        if (setIds.has(s.id)) {
+          s.shippingStatus = 'ENVIADO';
+        }
+      }
+      writeLocal(LOCAL_STORAGE_VAULT_STOCK, allStock);
     }
-    writeLocal(LOCAL_STORAGE_VAULT_STOCK, allStock);
 
     // 3. Calcula total consolidado do pacote
     const totalValue =
@@ -448,7 +743,7 @@ export const customerVaultService = {
         condition: ai.condition,
         language: ai.language,
         finish: ai.finish,
-        imageUrl: ai.customPhotoUrl || ai.apiImageUrl,
+        imageUrl: ai.apiImageUrl || ai.customPhotoUrl || undefined,
         auctionCode: ai.auction?.code,
         unitPrice: ai.isFreebie ? 0 : Number(ai.finalPrice || ai.initialPrice || 0),
         quantity: 1,
@@ -463,53 +758,90 @@ export const customerVaultService = {
         condition: si.condition,
         language: si.language,
         finish: si.finish,
-        imageUrl: si.imageUrl,
+        imageUrl: si.imageUrl || undefined,
         unitPrice: Number(si.unitPrice || 0),
         quantity: si.quantity || 1,
         totalPrice: Number(si.unitPrice || 0) * (si.quantity || 1),
       })),
     ];
 
-    const stockUnits = params.stockItems.reduce((acc, i) => acc + (i.quantity || 1), 0);
-    const totalUnits = params.auctionItems.length + stockUnits;
+    const totalUnits =
+      params.auctionItems.length +
+      params.stockItems.reduce((acc, i) => acc + (i.quantity || 1), 0);
 
-    // 5. Gera código sequencial do pacote (ex: ENV-001)
-    const allShipments = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
-    const nextSeq = allShipments.length + 1;
+    // Endereço formatado do cliente
+    let addressStr = '';
+    if (params.customer.street || params.customer.city) {
+      addressStr = `${params.customer.street || ''}, ${params.customer.number || 'S/N'}${
+        params.customer.complement ? ` (${params.customer.complement})` : ''
+      } - ${params.customer.neighborhood || ''}, ${params.customer.city || ''}/${
+        params.customer.state || ''
+      } - CEP: ${params.customer.cep || ''}`;
+    }
+
+    // Gera código sequencial do envio
+    const existingShipments = await this.getAllShipments();
+    const nextSeq = existingShipments.length + 1;
     const shipmentCode = `ENV-${String(nextSeq).padStart(3, '0')}`;
 
-    // Monta endereço consolidado
-    const cust = params.customer;
-    const addrParts = [
-      cust.street ? `${cust.street}, ${cust.number || 'S/N'}${cust.complement ? ` (${cust.complement})` : ''}` : '',
-      cust.neighborhood,
-      cust.city ? `${cust.city}/${cust.state || ''}` : '',
-      cust.cep ? `CEP: ${cust.cep}` : '',
-    ].filter(Boolean);
-    const customerAddress = addrParts.join(' - ');
-
-    const newShipment: CustomerShipmentPackage = {
-      id: `shp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      shipmentCode,
-      customerId: cust.id,
-      customerName: cust.name,
-      customerPhone: cust.phone || undefined,
-      customerAddress: customerAddress || undefined,
-      trackingCode: params.trackingCode?.trim() || undefined,
+    const shipmentPayload = {
+      shipment_code: shipmentCode,
+      customer_id: params.customer.id,
+      customer_name: params.customer.name,
+      customer_phone: params.customer.phone || null,
+      customer_address: addressStr || null,
+      tracking_code: params.trackingCode?.trim() || null,
       carrier,
-      customCarrierName: params.customCarrierName?.trim() || undefined,
-      shippingCost: params.shippingCost ? Number(params.shippingCost) : undefined,
+      custom_carrier_name: params.customCarrierName?.trim() || null,
+      shipping_cost: params.shippingCost ? Number(params.shippingCost) : null,
       status: 'ENVIADO',
-      totalItemsCount: totalUnits,
-      totalValue,
-      isQuestClosure,
+      total_items_count: totalUnits,
+      total_value: totalValue,
+      is_quest_closure: isQuestClosure,
       items: itemSnapshots,
-      notes: params.notes?.trim() || undefined,
-      dispatchedAt: nowIso,
-      createdAt: nowIso,
-      updatedAt: nowIso,
+      notes: params.notes?.trim() || null,
+      dispatched_at: nowIso,
     };
 
+    let newShipment: CustomerShipmentPackage;
+
+    try {
+      const { data, error } = await supabase
+        .from('customer_shipments')
+        .insert(shipmentPayload)
+        .select()
+        .single();
+
+      if (!error && data) {
+        newShipment = mapShipmentRow(data);
+      } else {
+        throw error || new Error('Erro ao salvar pacote no banco');
+      }
+    } catch (err) {
+      newShipment = {
+        id: `ship_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        shipmentCode,
+        customerId: params.customer.id,
+        customerName: params.customer.name,
+        customerPhone: params.customer.phone || undefined,
+        customerAddress: addressStr || undefined,
+        trackingCode: params.trackingCode?.trim() || undefined,
+        carrier,
+        customCarrierName: params.customCarrierName?.trim() || undefined,
+        shippingCost: params.shippingCost ? Number(params.shippingCost) : undefined,
+        status: 'ENVIADO',
+        totalItemsCount: totalUnits,
+        totalValue,
+        isQuestClosure,
+        items: itemSnapshots,
+        notes: params.notes?.trim() || undefined,
+        dispatchedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+    }
+
+    const allShipments = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
     allShipments.unshift(newShipment);
     writeLocal(LOCAL_STORAGE_SHIPMENTS, allShipments);
 
@@ -521,40 +853,61 @@ export const customerVaultService = {
    * Se marcado como RECEBIDO, sincroniza os itens para RECEBIDO
    */
   async updateShipmentStatus(shipmentId: string, newStatus: ShipmentStatus): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const deliveredAt = newStatus === 'RECEBIDO' ? nowIso : null;
+
+    try {
+      await supabase
+        .from('customer_shipments')
+        .update({
+          status: newStatus,
+          delivered_at: deliveredAt,
+          updated_at: nowIso,
+        })
+        .eq('id', shipmentId);
+    } catch (err) {
+      console.warn('[customerVaultService] Falha ao atualizar envio no Supabase:', err);
+    }
+
     const allShipments = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
     const shipment = allShipments.find((s) => s.id === shipmentId);
-    if (!shipment) return;
+    if (shipment) {
+      shipment.status = newStatus;
+      shipment.updatedAt = nowIso;
+      shipment.deliveredAt = deliveredAt || undefined;
 
-    shipment.status = newStatus;
-    shipment.updatedAt = new Date().toISOString();
-    if (newStatus === 'RECEBIDO') {
-      shipment.deliveredAt = new Date().toISOString();
-    } else {
-      shipment.deliveredAt = undefined;
-    }
+      // Sincroniza o status dos itens no banco / local
+      for (const item of shipment.items) {
+        if (item.sourceType === 'AUCTION') {
+          try {
+            await auctionService.updateItemStatuses({
+              itemId: item.id,
+              shippingStatus: newStatus,
+            });
+          } catch (err) {
+            console.warn(`[customerVaultService] Falha ao atualizar arremate ${item.id} para ${newStatus}:`, err);
+          }
+        } else if (item.sourceType === 'STOCK') {
+          try {
+            await supabase
+              .from('customer_vault_stock_items')
+              .update({ shipping_status: newStatus, updated_at: nowIso })
+              .eq('id', item.id);
+          } catch (err) {
+            console.warn('[customerVaultService] Falha ao atualizar item de estoque no Supabase:', err);
+          }
 
-    // Sincroniza o status dos itens no banco / local
-    for (const item of shipment.items) {
-      if (item.sourceType === 'AUCTION') {
-        try {
-          await auctionService.updateItemStatuses({
-            itemId: item.id,
-            shippingStatus: newStatus,
-          });
-        } catch (err) {
-          console.warn(`[customerVaultService] Falha ao atualizar arremate ${item.id} para ${newStatus}:`, err);
-        }
-      } else if (item.sourceType === 'STOCK') {
-        const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
-        const found = allStock.find((s) => s.id === item.id);
-        if (found) {
-          found.shippingStatus = newStatus;
-          writeLocal(LOCAL_STORAGE_VAULT_STOCK, allStock);
+          const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
+          const found = allStock.find((s) => s.id === item.id);
+          if (found) {
+            found.shippingStatus = newStatus;
+            writeLocal(LOCAL_STORAGE_VAULT_STOCK, allStock);
+          }
         }
       }
-    }
 
-    writeLocal(LOCAL_STORAGE_SHIPMENTS, allShipments);
+      writeLocal(LOCAL_STORAGE_SHIPMENTS, allShipments);
+    }
   },
 
   /**
@@ -566,6 +919,22 @@ export const customerVaultService = {
     carrier?: ShipmentCarrier;
     customCarrierName?: string;
   }): Promise<CustomerShipmentPackage | null> {
+    const nowIso = new Date().toISOString();
+
+    try {
+      await supabase
+        .from('customer_shipments')
+        .update({
+          tracking_code: params.trackingCode.trim() || null,
+          carrier: params.carrier,
+          custom_carrier_name: params.customCarrierName?.trim() || null,
+          updated_at: nowIso,
+        })
+        .eq('id', params.shipmentId);
+    } catch (err) {
+      console.warn('[customerVaultService] Falha ao atualizar rastreio no banco:', err);
+    }
+
     const allShipments = readLocal<CustomerShipmentPackage[]>(LOCAL_STORAGE_SHIPMENTS, []);
     const shipment = allShipments.find((s) => s.id === params.shipmentId);
     if (!shipment) return null;
@@ -573,7 +942,7 @@ export const customerVaultService = {
     shipment.trackingCode = params.trackingCode.trim() || undefined;
     if (params.carrier) shipment.carrier = params.carrier;
     if (params.customCarrierName !== undefined) shipment.customCarrierName = params.customCarrierName.trim() || undefined;
-    shipment.updatedAt = new Date().toISOString();
+    shipment.updatedAt = nowIso;
 
     writeLocal(LOCAL_STORAGE_SHIPMENTS, allShipments);
     return shipment;
@@ -703,44 +1072,71 @@ export const customerVaultService = {
     const countsMap = new Map<string, number>();
 
     // 1. Itens de leilão pagos e não enviados/recebidos (apenas NAO_SOLICITADO ou SOLICITADO)
-    const { data, error } = await supabase
-      .from('tcg_auction_items')
-      .select('winning_customer_id')
-      .eq('status', 'ARREMATADO')
-      .eq('payment_status', 'PAGO')
-      .in('shipping_status', ['NAO_SOLICITADO', 'SOLICITADO']);
+    try {
+      const { data, error } = await supabase
+        .from('tcg_auction_items')
+        .select('winning_customer_id')
+        .eq('status', 'ARREMATADO')
+        .eq('payment_status', 'PAGO')
+        .in('shipping_status', ['NAO_SOLICITADO', 'SOLICITADO']);
 
-    if (!error && Array.isArray(data)) {
-      for (const row of data) {
-        if (!row.winning_customer_id) continue;
-        const cur = countsMap.get(row.winning_customer_id) || 0;
-        countsMap.set(row.winning_customer_id, cur + 1);
-      }
-    } else {
-      const localItems = readLocal<TcgAuctionItem[]>(LOCAL_STORAGE_AUCTION_ITEMS, []);
-      for (const i of localItems) {
-        if (
-          i.winningCustomerId &&
-          i.status === 'ARREMATADO' &&
-          i.paymentStatus === 'PAGO' &&
-          (i.shippingStatus === 'NAO_SOLICITADO' || i.shippingStatus === 'SOLICITADO')
-        ) {
-          const cur = countsMap.get(i.winningCustomerId) || 0;
-          countsMap.set(i.winningCustomerId, cur + 1);
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          if (!row.winning_customer_id) continue;
+          const cur = countsMap.get(row.winning_customer_id) || 0;
+          countsMap.set(row.winning_customer_id, cur + 1);
+        }
+      } else {
+        const localItems = readLocal<TcgAuctionItem[]>(LOCAL_STORAGE_AUCTION_ITEMS, []);
+        for (const i of localItems) {
+          if (
+            i.winningCustomerId &&
+            i.status === 'ARREMATADO' &&
+            i.paymentStatus === 'PAGO' &&
+            (i.shippingStatus === 'NAO_SOLICITADO' || i.shippingStatus === 'SOLICITADO')
+          ) {
+            const cur = countsMap.get(i.winningCustomerId) || 0;
+            countsMap.set(i.winningCustomerId, cur + 1);
+          }
         }
       }
+    } catch {
+      // Ignora erro
     }
 
-    // 2. Itens de estoque na gaveta
-    const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
-    for (const s of allStock) {
-      if (
-        s.paymentStatus === 'PAGO' &&
-        s.shippingStatus !== 'ENVIADO' &&
-        s.shippingStatus !== 'RECEBIDO'
-      ) {
-        const cur = countsMap.get(s.customerId) || 0;
-        countsMap.set(s.customerId, cur + (s.quantity || 1));
+    // 2. Itens de estoque na gaveta (tenta Supabase primeiro)
+    let foundInDb = false;
+    try {
+      const { data, error } = await supabase
+        .from('customer_vault_stock_items')
+        .select('customer_id, quantity')
+        .eq('payment_status', 'PAGO')
+        .in('shipping_status', ['NAO_SOLICITADO', 'SOLICITADO']);
+
+      if (!error && Array.isArray(data)) {
+        foundInDb = true;
+        for (const row of data) {
+          if (!row.customer_id) continue;
+          const cur = countsMap.get(row.customer_id) || 0;
+          countsMap.set(row.customer_id, cur + (Number(row.quantity) || 1));
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!foundInDb) {
+      ensureLocalSeed();
+      const allStock = readLocal<CustomerVaultStockItem[]>(LOCAL_STORAGE_VAULT_STOCK, []);
+      for (const s of allStock) {
+        if (
+          s.paymentStatus === 'PAGO' &&
+          s.shippingStatus !== 'ENVIADO' &&
+          s.shippingStatus !== 'RECEBIDO'
+        ) {
+          const cur = countsMap.get(s.customerId) || 0;
+          countsMap.set(s.customerId, cur + (s.quantity || 1));
+        }
       }
     }
 
