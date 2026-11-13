@@ -175,6 +175,15 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // Reordenação: atualização otimista + salvamento agrupado (debounce) e serializado.
+  // Evita disparar uma rajada de requests a cada clique rápido nas setas.
+  const itemsRef = useRef<TcgAuctionItem[]>([]);
+  const persistedOrderRef = useRef<Map<string, number>>(new Map());
+  const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reorderPromiseRef = useRef<Promise<void> | null>(null);
+  const reorderDirtyRef = useRef(false);
+  const [reorderStatus, setReorderStatus] = useState<'idle' | 'pending' | 'saving'>('idle');
+
   const editCalculatedOptions = useMemo(() => {
     if (editItemIsFreebie) return [0, 0, 0, 0, 0];
     const init = Math.max(0, parseFloat(editItemInitialPrice) || 0);
@@ -182,8 +191,13 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
     return auctionService.calculateBidOptions(init, step);
   }, [editItemIsFreebie, editItemInitialPrice, editItemBidStep]);
 
-  const loadData = async () => {
+  const loadData = async (opts?: { skipReorderFlush?: boolean }) => {
     try {
+      // Garante que uma reordenação pendente seja salva antes de recarregar,
+      // senão o reload sobrescreveria a ordem local ainda não persistida.
+      if (!opts?.skipReorderFlush) {
+        await flushPendingReorder();
+      }
       setLoading(true);
       const [res, custs] = await Promise.all([
         auctionService.getAuctionById(auctionId),
@@ -192,6 +206,8 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
       if (res) {
         setAuction(res.auction);
         setItems(res.items);
+        itemsRef.current = res.items;
+        persistedOrderRef.current = new Map(res.items.map((i) => [i.id, i.orderIndex]));
       }
       setCustomers(custs);
     } catch (err: any) {
@@ -370,7 +386,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
         language: editItemLanguage || null,
         finish: editItemFinish || null,
         initialPrice: editItemIsFreebie ? 0 : (parseFloat(editItemInitialPrice) || 0),
-        bidStep: editItemIsFreebie ? 0 : (parseFloat(editItemBidStep) || 1),
+        bidStep: parseFloat(editItemBidStep) || 1,
         costPrice: parseFloat(editItemCostPrice) || 0,
         isFreebie: editItemIsFreebie,
         customPhotoUrl: editItemPhotoUrl || null,
@@ -403,7 +419,79 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
     }
   };
 
-  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+  /**
+   * Persiste a ordem atual (itemsRef) no banco. Se já houver um salvamento em andamento,
+   * apenas marca como "sujo" e o loop salva de novo ao terminar — nunca roda em paralelo.
+   */
+  const persistReorder = (): Promise<void> => {
+    if (reorderTimerRef.current) {
+      clearTimeout(reorderTimerRef.current);
+      reorderTimerRef.current = null;
+    }
+    if (reorderPromiseRef.current) {
+      reorderDirtyRef.current = true;
+      return reorderPromiseRef.current;
+    }
+
+    const run = async () => {
+      try {
+        do {
+          reorderDirtyRef.current = false;
+          const ids = itemsRef.current.map((i) => i.id);
+          await auctionService.reorderAuctionItems(ids, persistedOrderRef.current);
+          persistedOrderRef.current = new Map(ids.map((id, idx) => [id, idx + 1]));
+        } while (reorderDirtyRef.current);
+        reorderPromiseRef.current = null;
+        setReorderStatus('idle');
+        success('Ordem dos lotes salva!');
+      } catch (err: any) {
+        reorderPromiseRef.current = null;
+        reorderDirtyRef.current = false;
+        setReorderStatus('idle');
+        error(
+          `Não foi possível salvar a nova ordem dos lotes (${err?.message || 'erro de conexão'}). Recarregando a ordem salva...`
+        );
+        await loadData({ skipReorderFlush: true });
+      }
+    };
+
+    setReorderStatus('saving');
+    reorderPromiseRef.current = run();
+    return reorderPromiseRef.current;
+  };
+
+  /** Salva imediatamente qualquer reordenação pendente (usado antes de recarregar/sair). */
+  const flushPendingReorder = async () => {
+    if (reorderTimerRef.current || reorderPromiseRef.current) {
+      await persistReorder();
+    }
+  };
+
+  const applyNewOrder = (newItems: TcgAuctionItem[]) => {
+    itemsRef.current = newItems;
+    setItems(newItems);
+    setReorderStatus((s) => (s === 'saving' ? s : 'pending'));
+    if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+    // Aguarda o usuário parar de clicar antes de salvar (agrupa vários cliques em um salvamento)
+    reorderTimerRef.current = setTimeout(() => {
+      reorderTimerRef.current = null;
+      persistReorder();
+    }, 800);
+  };
+
+  // Ao sair da tela, não perde uma reordenação que ainda estava aguardando o debounce
+  React.useEffect(() => {
+    return () => {
+      if (reorderTimerRef.current) {
+        clearTimeout(reorderTimerRef.current);
+        reorderTimerRef.current = null;
+        persistReorder();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     if (draggedItemIndex === null || draggedItemIndex === dropIndex) {
       setDraggedItemIndex(null);
@@ -411,39 +499,28 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
       return;
     }
 
-    const newItems = [...items];
+    const newItems = [...itemsRef.current];
     const [moved] = newItems.splice(draggedItemIndex, 1);
     newItems.splice(dropIndex, 0, moved);
 
-    setItems(newItems);
     setDraggedItemIndex(null);
     setDragOverIndex(null);
-
-    try {
-      await auctionService.reorderAuctionItems(newItems.map((i) => i.id));
-      success('Ordem dos lotes atualizada com sucesso!');
-    } catch (err: any) {
-      error(err.message || 'Erro ao salvar reordenação dos lotes.');
-      loadData();
-    }
+    applyNewOrder(newItems);
   };
 
-  const handleMoveItemUpDown = async (index: number, direction: 'UP' | 'DOWN') => {
+  const handleMoveItemUpDown = (itemId: string, direction: 'UP' | 'DOWN') => {
+    // Usa sempre a lista mais recente (ref), não o índice do render — cliques rápidos
+    // podem acontecer antes do React re-renderizar.
+    const current = itemsRef.current;
+    const index = current.findIndex((i) => i.id === itemId);
+    if (index < 0) return;
     const targetIndex = direction === 'UP' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= items.length) return;
+    if (targetIndex < 0 || targetIndex >= current.length) return;
 
-    const newItems = [...items];
+    const newItems = [...current];
     const [moved] = newItems.splice(index, 1);
     newItems.splice(targetIndex, 0, moved);
-
-    setItems(newItems);
-    try {
-      await auctionService.reorderAuctionItems(newItems.map((i) => i.id));
-      success('Ordem dos lotes atualizada!');
-    } catch (err: any) {
-      error(err.message || 'Erro ao salvar reordenação.');
-      loadData();
-    }
+    applyNewOrder(newItems);
   };
 
   const handleOpenArremateModal = (item: TcgAuctionItem) => {
@@ -909,6 +986,17 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
 
       {/* Listagem de Lotes / Itens */}
       <div className="space-y-3">
+        {/* Indicador flutuante de salvamento da ordem (visível mesmo rolando a lista) */}
+        {reorderStatus !== 'idle' && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-trigon-900/95 border border-trigon-700 shadow-lg text-xs font-semibold text-trigon-200 flex items-center gap-2 pointer-events-none">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                reorderStatus === 'saving' ? 'bg-amber-400 animate-pulse' : 'bg-trigon-400'
+              }`}
+            />
+            {reorderStatus === 'saving' ? 'Salvando nova ordem...' : 'Ordem alterada — salvando em instantes'}
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="font-cinzel text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Package className="w-4 h-4 text-crimson-400" />
@@ -985,7 +1073,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
                           <button
                             type="button"
                             disabled={idx === 0}
-                            onClick={() => handleMoveItemUpDown(idx, 'UP')}
+                            onClick={() => handleMoveItemUpDown(item.id, 'UP')}
                             className="p-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-trigon-500 transition-colors"
                             title="Mover lote para cima"
                           >
@@ -1000,7 +1088,7 @@ export const AuctionDetailsView: React.FC<AuctionDetailsViewProps> = ({
                           <button
                             type="button"
                             disabled={idx === items.length - 1}
-                            onClick={() => handleMoveItemUpDown(idx, 'DOWN')}
+                            onClick={() => handleMoveItemUpDown(item.id, 'DOWN')}
                             className="p-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-trigon-500 transition-colors"
                             title="Mover lote para baixo"
                           >

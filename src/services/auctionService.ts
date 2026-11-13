@@ -786,7 +786,12 @@ Agradecemos pela atenção e por participar dos leilões da *TRIGON*! 🔺`;
 
     if (updates.isFreebie) {
       payload.initial_price = 0;
-      payload.bid_step = 0;
+      // bid_step tem CHECK (bid_step > 0) no banco: nunca enviar 0.
+      // Para brinde o incremento é irrelevante (opções zeradas), então preserva
+      // o valor informado (se válido) para o caso de desmarcar o brinde depois.
+      if (updates.bidStep !== undefined && Number(updates.bidStep) > 0) {
+        payload.bid_step = Math.max(0.5, Number(updates.bidStep));
+      }
       payload.bid_options = [0, 0, 0, 0, 0];
     } else {
       if (updates.initialPrice !== undefined) {
@@ -844,19 +849,44 @@ Agradecemos pela atenção e por participar dos leilões da *TRIGON*! 🔺`;
   /**
    * Reordena os lotes do leilão persistindo a nova sequência de order_index
    */
-  async reorderAuctionItems(orderedItemIds: string[]): Promise<void> {
+  async reorderAuctionItems(
+    orderedItemIds: string[],
+    /**
+     * Mapa id -> order_index atualmente salvo no banco. Quando informado, só os lotes
+     * cuja posição mudou são enviados (ex.: subir 1 posição = 2 updates em vez de N).
+     */
+    persistedOrder?: Map<string, number>
+  ): Promise<void> {
     const now = new Date().toISOString();
-    const updates = orderedItemIds.map((id, index) => {
-      return supabase
-        .from('tcg_auction_items')
-        .update({ order_index: index + 1, updated_at: now })
-        .eq('id', id);
-    });
+    const changes = orderedItemIds
+      .map((id, index) => ({ id, orderIndex: index + 1 }))
+      .filter(({ id, orderIndex }) => !persistedOrder || persistedOrder.get(id) !== orderIndex);
 
-    const results = await Promise.all(updates);
-    const firstError = results.find((r) => r.error && !isMissingTableError(r.error))?.error;
-    if (firstError) {
-      throw new Error(firstError.message);
+    const updateOne = async (id: string, orderIndex: number) => {
+      const run = () =>
+        supabase
+          .from('tcg_auction_items')
+          .update({ order_index: orderIndex, updated_at: now })
+          .eq('id', id);
+
+      let res = await run();
+      // Falhas de rede transitórias (ex.: "Failed to fetch" no mobile) — tenta mais uma vez
+      if (res.error && /fetch|network/i.test(res.error.message || '')) {
+        await new Promise((r) => setTimeout(r, 400));
+        res = await run();
+      }
+      return res;
+    };
+
+    // Concorrência limitada para não saturar a conexão (antes disparava 1 request por lote, tudo de uma vez)
+    const CONCURRENCY = 5;
+    for (let i = 0; i < changes.length; i += CONCURRENCY) {
+      const chunk = changes.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(chunk.map((c) => updateOne(c.id, c.orderIndex)));
+      const firstError = results.find((r) => r.error && !isMissingTableError(r.error))?.error;
+      if (firstError) {
+        throw new Error(firstError.message);
+      }
     }
 
     const local = readLocal<TcgAuctionItem[]>(LOCAL_STORAGE_KEYS.AUCTION_ITEMS, []);
