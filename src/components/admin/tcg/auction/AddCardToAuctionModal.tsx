@@ -723,7 +723,7 @@ export const AddCardToAuctionModal: React.FC<AddCardToAuctionModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  step="0.50"
+                  step="0.01"
                   min="0.50"
                   max="100"
                   disabled={isFreebie}
